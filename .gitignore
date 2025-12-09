@@ -1,0 +1,23 @@
+# --- Laravel (Backend) ---
+/backend/vendor/
+/backend/node_modules/
+/backend/.env
+/backend/storage/*.key
+/backend/public/storage
+/backend/public/hot
+
+# --- React (Frontend) ---
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.env
+/frontend/.env.local
+
+# --- Python (AI-ML) ---
+/AI-ML/venv/
+/AI-ML/__pycache__/
+/AI-ML/*.pyc
+/AI-ML/.env
+
+# --- General System Files ---
+.DS_Store
+Thumbs.db
