@@ -21,4 +21,11 @@ class Visitor extends Model
         'ContactNumber',
         'EmailAddress',
     ];
+
+    // Link to the Visit Logs table
+    public function logs()
+    {
+        // A visitor can have multiple logs (visits)
+        return $this->hasMany(VisitLog::class, 'VisitorID', 'VisitorID');
+    }
 }

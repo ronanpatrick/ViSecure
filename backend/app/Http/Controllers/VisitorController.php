@@ -48,4 +48,13 @@ class VisitorController extends Controller
             'time_in' => $log->EntryTimestamp,
         ], 201);
     }
+    
+    // Fetch all visitors to show in the Admin Dashboard
+    public function index()
+    {
+        // Get visitors AND their visit logs (so we can see the purpose)
+        $visitors = Visitor::with('logs')->orderBy('created_at', 'desc')->get();
+
+        return response()->json($visitors);
+    }
 }

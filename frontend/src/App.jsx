@@ -1,9 +1,11 @@
-import VisitorRegistration from './components/VisitorRegistration';
+// import VisitorRegistration from './components/VisitorRegistration';
+import AdminDashboard from './components/AdminDashboard'; // <-- Import the new one
 
 function App() {
   return (
     <div>
-      <VisitorRegistration />
+      {/* <VisitorRegistration /> */}
+      <AdminDashboard />  {/* <-- Render the new one */}
     </div>
   );
 }
