@@ -1,18 +1,30 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import VisitorRegistration from './components/VisitorRegistration';
 import AdminDashboard from './components/AdminDashboard';
+import Login from './components/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
     <div>
       <Routes>
-        {/* 1. Default Page (QR Code Scan) -> Shows Registration Form */}
+        {/* 1. Public: Visitor Registration (Default Page for QR Code) */}
         <Route path="/" element={<VisitorRegistration />} />
+        
+        {/* 2. Public: Admin Login Page */}
+        <Route path="/login" element={<Login />} />
 
-        {/* 2. Admin Page (Hidden) -> Shows Dashboard */}
-        <Route path="/admin" element={<AdminDashboard />} />
+        {/* 3. Protected: Admin Dashboard (The "Bouncer" checks this door) */}
+        <Route 
+          path="/admin" 
+          element={
+            <ProtectedRoute>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } 
+        />
 
-        {/* 3. Catch-all -> Redirects random links back to Registration */}
+        {/* 4. Catch-all: Redirect unknown links back to Registration */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>
