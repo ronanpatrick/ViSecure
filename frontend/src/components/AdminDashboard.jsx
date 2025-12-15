@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom'; // <--- Hook for navigation
 
 export default function AdminDashboard() {
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate(); // <--- Initialize navigation
 
     // 1. Fetch data from Laravel when the page loads
     useEffect(() => {
         fetchVisitors();
     }, []);
+
+    // 2. LOGOUT FUNCTION
+    const handleLogout = () => {
+        localStorage.removeItem('auth_token'); // Throw away the key
+        navigate('/login'); // Send them back to the gate
+    };
 
     const fetchVisitors = async () => {
         try {
@@ -36,7 +44,7 @@ export default function AdminDashboard() {
         boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
         borderRadius: '8px',
         overflow: 'hidden',
-        tableLayout: 'fixed' // <--- ADD THIS LINE
+        tableLayout: 'fixed' // <--- Keeps columns locked in place
     };
 
     const thStyle = {
@@ -52,9 +60,26 @@ export default function AdminDashboard() {
         color: '#333'
     };
 
+    // Button Style
+    const logoutBtnStyle = {
+        padding: '10px 20px',
+        backgroundColor: '#dc3545', // Red
+        color: 'white',
+        border: 'none',
+        borderRadius: '5px',
+        cursor: 'pointer',
+        fontWeight: 'bold'
+    };
+
     return (
         <div style={pageStyle}>
-            <h1 style={{ color: '#333', marginBottom: '20px' }}>Admin Dashboard: Visitor Records</h1>
+            {/* Header + Logout Button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h1 style={{ color: '#333', margin: 0 }}>Admin Dashboard: Visitor Records</h1>
+                <button onClick={handleLogout} style={logoutBtnStyle}>
+                    Logout
+                </button>
+            </div>
             
             {loading ? (
                 <p>Loading records...</p>
@@ -62,13 +87,13 @@ export default function AdminDashboard() {
                 <table style={tableStyle}>
                     <thead>
                         <tr>
-                            {/* We add 'width' here to lock the columns in place */}
+                            {/* Corrected Widths (Total = 100%) */}
                             <th style={{ ...thStyle, width: '5%' }}>ID</th>
-                            <th style={{ ...thStyle, width: '20%' }}>Full Name</th>
-                            <th style={{ ...thStyle, width: '10%' }}>Age</th>
+                            <th style={{ ...thStyle, width: '25%' }}>Full Name</th>
+                            <th style={{ ...thStyle, width: '5%' }}>Age</th>
                             <th style={{ ...thStyle, width: '10%' }}>Sex</th>
-                            <th style={{ ...thStyle, width: '10%' }}>Purpose</th>
-                            <th style={{ ...thStyle, width: '10%' }}>Date Registered</th>
+                            <th style={{ ...thStyle, width: '40%' }}>Purpose</th>
+                            <th style={{ ...thStyle, width: '15%' }}>Date Registered</th>
                         </tr>
                     </thead>
                     <tbody>
