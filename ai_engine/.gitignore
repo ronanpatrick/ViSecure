@@ -1,0 +1,13 @@
+# Ignore the Virtual Environment (It's huge and system-specific)
+venv/
+
+# Ignore compiled Python files (Junk)
+__pycache__/
+*.pyc
+
+# Ignore Environment Variables (Security Risk!)
+.env
+
+# OPTIONAL: Ignore your raw face photos (Privacy)
+# If you comment this out, your face photos will go to GitHub.
+# dataset/
