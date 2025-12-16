@@ -8,6 +8,8 @@ __pycache__/
 # Ignore Environment Variables (Security Risk!)
 .env
 
+dataset/
+
 # OPTIONAL: Ignore your raw face photos (Privacy)
 # If you comment this out, your face photos will go to GitHub.
 # dataset/
