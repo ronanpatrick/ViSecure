@@ -1,106 +1,128 @@
 import cv2
 import numpy as np
 import os
-import mysql.connector 
+import mysql.connector
+import datetime
+import time
 
-# --- DATABASE SETUP ---
-def get_user_name_from_db(user_id):
-    """
-    Connects to MySQL to find the name belonging to the ID.
-    """
+# --- DATABASE SETTINGS ---
+DB_CONFIG = {
+    'host': "127.0.0.1",
+    'user': "root",
+    'password': "",
+    'database': "visecure_db" # Verify this matches your .env
+}
+
+# --- COOLDOWN SYSTEM ---
+# This prevents spamming the database with 100 logs per minute
+# Format: { visitor_id : timestamp_of_last_log }
+log_cooldowns = {}
+COOLDOWN_SECONDS = 60  # Wait 60 seconds before logging the same person again
+
+def get_visitor_name(visitor_id):
+    """ Fetch Visitor Name from Database """
     try:
-        conn = mysql.connector.connect(
-            host="127.0.0.1",
-            user="root",
-            password="",
-            database="visecure_db"
-        )
+        conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
-        # We assume the table is named 'users' (Standard Laravel)
-        query = "SELECT name FROM users WHERE id = %s"
-        cursor.execute(query, (user_id,))
-        
+        # NOTE: We are now querying the VISITORS table, not USERS
+        # Make sure your visitors table has a column 'First_Name' or 'Name'
+        # Adjust 'First_Name' below to match your actual column name
+        query = "SELECT FullName FROM visitors WHERE VisitorID = %s"
+        cursor.execute(query, (visitor_id,))
         result = cursor.fetchone()
-        conn.close() # Close connection to save resources
+        conn.close()
         
         if result:
-            return result[0] # Return the name
-        else:
-            return "Unknown"
-            
-    except mysql.connector.Error as err:
-        print(f"[DB Error] {err}")
+            return result[0]
+        return "Unknown"
+    except Exception as e:
+        print(f"[DB Reading Error] {e}")
         return "Error"
 
-# --- RECOGNIZER SETUP ---
+def log_visit_to_db(visitor_id):
+    """ Insert a new record into visit_logs """
+    # 1. Check Cooldown
+    current_time = time.time()
+    if visitor_id in log_cooldowns:
+        last_time = log_cooldowns[visitor_id]
+        if current_time - last_time < COOLDOWN_SECONDS:
+            return # Too soon, skip logging
+
+    # 2. Insert Log
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        
+        # We only insert VisitorID. 
+        # EntryTimestamp is automatic. Status defaults to Active.
+        sql = """INSERT INTO visit_logs (VisitorID, PurposeOfVisit) 
+                 VALUES (%s, %s)"""
+        val = (visitor_id, "Face Recognition Entry")
+        
+        cursor.execute(sql, val)
+        conn.commit()
+        conn.close()
+        
+        # Update cooldown
+        log_cooldowns[visitor_id] = current_time
+        print(f"\n [SUCCESS] Visit Logged for ID {visitor_id}!")
+        
+    except mysql.connector.Error as err:
+        print(f"\n [DB Writing Error] {err}")
+        print("Tip: Does VisitorID exist in the 'visitors' table?")
+
+# --- MAIN RECOGNITION LOOP ---
 recognizer = cv2.face.LBPHFaceRecognizer_create()
-
-# Check if trainer exists
-if not os.path.exists('trainer/trainer.yml'):
-    print("[ERROR] Please run 02_face_training.py first!")
-    exit()
-
 recognizer.read('trainer/trainer.yml')
-cascadePath = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-faceCascade = cv2.CascadeClassifier(cascadePath)
 
+faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 font = cv2.FONT_HERSHEY_SIMPLEX
 
-# Start Camera
 cam = cv2.VideoCapture(0)
-cam.set(3, 640) 
-cam.set(4, 480) 
+cam.set(3, 640)
+cam.set(4, 480)
+minW = 0.1 * cam.get(3)
+minH = 0.1 * cam.get(4)
 
-# Define min window size
-minW = 0.1*cam.get(3)
-minH = 0.1*cam.get(4)
+names_cache = {}
 
-# LOCAL MEMORY (Cache)
-# This prevents us from querying the DB 30 times a second
-names_cache = {} 
-
-print("\n [INFO] System Active. Looking for faces...")
+print("\n [INFO] ViSecure Eye Active. Press 'ESC' to quit.")
 
 while True:
     ret, img = cam.read()
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if not ret: break
     
-    faces = faceCascade.detectMultiScale( 
-        gray,
-        scaleFactor = 1.2,
-        minNeighbors = 5,
-        minSize = (int(minW), int(minH)),
-       )
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = faceCascade.detectMultiScale(gray, 1.2, 5, minSize=(int(minW), int(minH)))
 
     for(x,y,w,h) in faces:
         cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2)
-        
-        # Recognize the face
         id, confidence = recognizer.predict(gray[y:y+h,x:x+w])
 
-        # If confidence is less than 100, it's a match
         if (confidence < 100):
-            # Check if we already looked up this ID
+            # 1. Get Name (and Cache it)
             if id not in names_cache:
-                found_name = get_user_name_from_db(id)
-                names_cache[id] = found_name # Save to cache
-            
+                names_cache[id] = get_visitor_name(id)
             name = names_cache[id]
-            confidence_text = "  {0}%".format(round(100 - confidence))
+            
+            # 2. LOG THE VISIT (The Magic Step)
+            # Only log if we successfully found a name (ID exists)
+            if name != "Unknown" and name != "Error":
+                log_visit_to_db(id)
+
+            conf_text = "  {0}%".format(round(100 - confidence))
         else:
             name = "Unknown"
-            confidence_text = "  {0}%".format(round(100 - confidence))
+            conf_text = "  {0}%".format(round(100 - confidence))
         
         cv2.putText(img, str(name), (x+5,y-5), font, 1, (255,255,255), 2)
-        cv2.putText(img, str(confidence_text), (x+5,y+h-5), font, 1, (255,255,0), 1)  
+        cv2.putText(img, str(conf_text), (x+5,y+h-5), font, 1, (255,255,0), 1)  
 
     cv2.imshow('ViSecure Recognition', img) 
-
-    k = cv2.waitKey(10) & 0xff 
-    if k == 27: 
+    
+    if cv2.waitKey(10) & 0xff == 27: 
         break
 
-print("\n [INFO] Exiting Program")
 cam.release()
 cv2.destroyAllWindows()
