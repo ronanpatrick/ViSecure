@@ -5,6 +5,8 @@
 /backend/storage/*.key
 /backend/public/storage
 /backend/public/hot
+/backend/public/temp/
+/backend/.phpunit.result.cache
 
 # --- React (Frontend) ---
 /frontend/node_modules/
@@ -12,12 +14,16 @@
 /frontend/.env
 /frontend/.env.local
 
-# --- Python (AI-ML) ---
-/AI-ML/venv/
-/AI-ML/__pycache__/
-/AI-ML/*.pyc
-/AI-ML/.env
+# --- Python (AI Engine) ---
+# CHANGED: "AI-ML" -> "ai_engine" to match your actual folder
+/ai_engine/venv/
+/ai_engine/__pycache__/
+/ai_engine/*.pyc
+/ai_engine/.env
+/ai_engine/dataset/
+*.whl
 
 # --- General System Files ---
 .DS_Store
 Thumbs.db
+.vscode/

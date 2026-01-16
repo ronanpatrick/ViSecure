@@ -1,49 +1,62 @@
 import cv2
-import numpy as np
-from PIL import Image
+import face_recognition
+import pickle
 import os
 
-# Path for face image database
-path = 'dataset'
+# Path to the dataset of face images
+dataset_path = "dataset"
+encodings_file = "encodings.pickle"
 
-# Create the recognizer (The "Brain")
-recognizer = cv2.face.LBPHFaceRecognizer_create()
-detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+# Initialize lists
+known_encodings = []
+known_names = []
 
-# Function to get the images and label data
-def getImagesAndLabels(path):
-    imagePaths = [os.path.join(path,f) for f in os.listdir(path)]     
-    faceSamples=[]
-    ids = []
+# Ensure dataset exists
+if not os.path.exists(dataset_path):
+    print(f"[ERROR] Dataset folder '{dataset_path}' not found!")
+    exit()
 
-    for imagePath in imagePaths:
-        # Convert it to grayscale
-        PIL_img = Image.open(imagePath).convert('L') 
-        img_numpy = np.array(PIL_img,'uint8')
+print("[INFO] Quantifying faces...")
 
-        # Extract the user ID from the image name (User.1.1.jpg)
-        id = int(os.path.split(imagePath)[-1].split(".")[1])
-        
-        # Detect the face in the image again (for precision)
-        faces = detector.detectMultiScale(img_numpy)
+# Loop over the image paths in the dataset directory
+image_paths = [os.path.join(dataset_path, f) for f in os.listdir(dataset_path) if f.endswith(('.jpg', '.png'))]
 
-        for (x,y,w,h) in faces:
-            faceSamples.append(img_numpy[y:y+h,x:x+w])
-            ids.append(id)
+if len(image_paths) == 0:
+    print("[ERROR] No images found in 'dataset' folder. Run 01_face_dataset.py first.")
+    exit()
 
-    return faceSamples,ids
+for (i, image_path) in enumerate(image_paths):
+    print(f"[INFO] Processing image {i + 1}/{len(image_paths)}")
+    
+    # Extract the person's name from the filename
+    # Assumes format: User.Name.Count.jpg
+    filename = os.path.basename(image_path)
+    try:
+        name = filename.split(".")[1]
+    except IndexError:
+        print(f"[SKIP] Filename '{filename}' format incorrect. Expected: User.Name.Num.jpg")
+        continue
 
-print ("\n [INFO] Training faces. It will take a few seconds. Wait ...")
+    # Load the image and convert it from BGR (OpenCV) to RGB (dlib)
+    image = cv2.imread(image_path)
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-faces, ids = getImagesAndLabels(path)
-recognizer.train(faces, np.array(ids))
+    # Detect the (x, y)-coordinates of the bounding boxes corresponding to each face
+    boxes = face_recognition.face_locations(rgb, model="hog")
 
-# Save the model into the 'trainer' directory
-# Check if trainer folder exists first
-if not os.path.exists('trainer'):
-    os.makedirs('trainer')
+    # Compute the facial embedding for the face
+    encodings = face_recognition.face_encodings(rgb, boxes)
 
-recognizer.write('trainer/trainer.yml') 
+    # Loop over the encodings
+    for encoding in encodings:
+        known_encodings.append(encoding)
+        known_names.append(name)
 
-# Print the number of faces trained and end program
-print("\n [INFO] {0} faces trained. Exiting Program".format(len(np.unique(ids))))
+# Dump the facial encodings + names to disk
+print("[INFO] Serializing encodings...")
+data = {"encodings": known_encodings, "names": known_names}
+f = open(encodings_file, "wb")
+f.write(pickle.dumps(data))
+f.close()
+
+print("[INFO] Training Complete! 'encodings.pickle' created.")
