@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\VisitorController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\API\VisitorLogController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -14,3 +15,5 @@ Route::post('/register', [VisitorController::class, 'store']);
 Route::get('/visitors', [VisitorController::class, 'index']);
 
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::get('/logs', [VisitorLogController::class, 'index']);

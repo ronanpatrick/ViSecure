@@ -3,6 +3,7 @@ import VisitorRegistration from './components/VisitorRegistration';
 import AdminDashboard from './components/AdminDashboard';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
+import VisitorLogs from './components/VisitorLogs';
 
 function App() {
   return (

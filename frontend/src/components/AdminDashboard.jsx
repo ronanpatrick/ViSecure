@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom'; // <--- Hook for navigation
+import { useNavigate } from 'react-router-dom';
+import VisitorLogs from './VisitorLogs'; // <--- 1. IMPORT THE NEW COMPONENT
 
 export default function AdminDashboard() {
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(true);
-    const navigate = useNavigate(); // <--- Initialize navigation
+    const navigate = useNavigate();
 
     // 1. Fetch data from Laravel when the page loads
     useEffect(() => {
@@ -14,8 +15,8 @@ export default function AdminDashboard() {
 
     // 2. LOGOUT FUNCTION
     const handleLogout = () => {
-        localStorage.removeItem('auth_token'); // Throw away the key
-        navigate('/login'); // Send them back to the gate
+        localStorage.removeItem('auth_token');
+        navigate('/login');
     };
 
     const fetchVisitors = async () => {
@@ -44,7 +45,8 @@ export default function AdminDashboard() {
         boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
         borderRadius: '8px',
         overflow: 'hidden',
-        tableLayout: 'fixed' // <--- Keeps columns locked in place
+        tableLayout: 'fixed',
+        marginBottom: '40px' // Added spacing below the first table
     };
 
     const thStyle = {
@@ -60,10 +62,9 @@ export default function AdminDashboard() {
         color: '#333'
     };
 
-    // Button Style
     const logoutBtnStyle = {
         padding: '10px 20px',
-        backgroundColor: '#dc3545', // Red
+        backgroundColor: '#dc3545',
         color: 'white',
         border: 'none',
         borderRadius: '5px',
@@ -75,19 +76,20 @@ export default function AdminDashboard() {
         <div style={pageStyle}>
             {/* Header + Logout Button */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h1 style={{ color: '#333', margin: 0 }}>Admin Dashboard: Visitor Records</h1>
+                <h1 style={{ color: '#333', margin: 0 }}>Admin Dashboard</h1>
                 <button onClick={handleLogout} style={logoutBtnStyle}>
                     Logout
                 </button>
             </div>
             
+            {/* SECTION 1: REGISTERED VISITORS */}
+            <h2 style={{ color: '#0056b3', marginBottom: '10px' }}>📋 Registered Visitors (Database)</h2>
             {loading ? (
                 <p>Loading records...</p>
             ) : (
                 <table style={tableStyle}>
                     <thead>
                         <tr>
-                            {/* Corrected Widths (Total = 100%) */}
                             <th style={{ ...thStyle, width: '5%' }}>ID</th>
                             <th style={{ ...thStyle, width: '25%' }}>Full Name</th>
                             <th style={{ ...thStyle, width: '5%' }}>Age</th>
@@ -116,6 +118,13 @@ export default function AdminDashboard() {
                     </tbody>
                 </table>
             )}
+
+            {/* SECTION 2: LIVE AI LOGS */}
+            {/* This inserts the new component we just built */}
+            <div style={{ marginTop: '40px' }}>
+                <VisitorLogs />
+            </div>
+
         </div>
     );
 }

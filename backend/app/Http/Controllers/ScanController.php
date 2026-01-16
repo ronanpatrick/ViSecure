@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Models\VisitorLog; // <--- IMPORT THE MODEL
 
 class ScanController extends Controller
 {
@@ -28,49 +29,56 @@ class ScanController extends Controller
             file_put_contents($filePath, $imageBase64);
 
             // ==========================================
-            // 2. CALL THE "BRAIN" (EXPLICIT PATHS)
+            // 2. CALL THE "BRAIN"
             // ==========================================
             
-            // POINT TO THE VENV PYTHON (The one with dlib installed)
-            // Note: We use double backslashes \\ for Windows paths
             $pythonPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\venv\\Scripts\\python.exe";
-
-            // POINT TO THE PYTHON SCRIPT
             $scriptPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\04_verify_scan.py";
             
-            // Check if files exist before running (Good for debugging)
-            if (!file_exists($pythonPath)) {
-                return response()->json(['success' => false, 'error' => 'Python VENV not found at: ' . $pythonPath]);
-            }
-            if (!file_exists($scriptPath)) {
-                return response()->json(['success' => false, 'error' => 'Script not found at: ' . $scriptPath]);
-            }
+            if (!file_exists($pythonPath)) return response()->json(['success' => false, 'error' => 'Python not found']);
+            if (!file_exists($scriptPath)) return response()->json(['success' => false, 'error' => 'Script not found']);
 
-            // Construct the command
-            // We wrap paths in quotes "" just in case there are spaces
             $command = "\"$pythonPath\" \"$scriptPath\" \"$filePath\"";
-            
-            // Run it (2>&1 redirects errors to output so we can see them if it fails)
             $output = shell_exec($command . " 2>&1");
-            
-            // Decode the result
             $result = json_decode($output, true);
 
-            // Cleanup: Delete the temp image
-            // unlink($filePath); // Uncomment this when it works perfectly
+            // Cleanup temp image (Optional: Keep it if you want to save proof of entry)
+            // unlink($filePath); 
+
+            // ==========================================
+            // 3. LOG THE RESULT TO DATABASE
+            // ==========================================
 
             if ($result && isset($result['success']) && $result['success']) {
+                
+                // --- SUCCESS: LOG THE ENTRY ---
+                VisitorLog::create([
+                    'name' => $result['name'],
+                    'status' => 'GRANTED',
+                    'visited_at' => now(),
+                    // 'image_path' => $fileName, // Uncomment if you want to save the photo link
+                ]);
+
                 return response()->json([
                     'success' => true,
                     'name' => $result['name'],
                     'message' => $result['message']
                 ]);
+
             } else {
-                // If json_decode failed, $output contains the raw error message
-                $errorMsg = $result['message'] ?? $output;
+                
+                // --- SECURITY: LOG THE FAILED ATTEMPT ---
+                // This tracks "Unknown" people trying to enter
+                VisitorLog::create([
+                    'name' => 'Unknown',
+                    'status' => 'DENIED',
+                    'visited_at' => now(),
+                ]);
+
+                $errorMsg = $result['message'] ?? 'Unknown Error';
                 return response()->json([
                     'success' => false,
-                    'error' => 'AI Error: ' . $errorMsg
+                    'error' => $errorMsg
                 ]);
             }
 
