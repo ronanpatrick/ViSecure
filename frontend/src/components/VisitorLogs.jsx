@@ -7,18 +7,26 @@ const VisitorLogs = () => {
 
     // Fetch data from Laravel API
     useEffect(() => {
-        // We use axios here for consistency
-        axios.get('http://127.0.0.1:8000/api/logs')
-            .then(response => {
-                if (response.data.success) {
-                    setLogs(response.data.data);
-                }
-                setLoading(false);
-            })
-            .catch(error => {
-                console.error("Error fetching logs:", error);
-                setLoading(false);
-            });
+        // 1. Define the fetch function
+        const fetchLogs = () => {
+            axios.get('http://127.0.0.1:8000/api/logs')
+                .then(response => {
+                    if (response.data.success) {
+                        setLogs(response.data.data);
+                    }
+                    setLoading(false);
+                })
+                .catch(error => console.error(error));
+        };
+
+        // 2. Run it immediately
+        fetchLogs();
+
+        // 3. Run it every 3 seconds (Polling)
+        const interval = setInterval(fetchLogs, 3000);
+
+        // 4. Cleanup when leaving the page (Stop the timer)
+        return () => clearInterval(interval);
     }, []);
 
     // --- STYLES (Matching AdminDashboard) ---
