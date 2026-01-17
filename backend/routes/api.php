@@ -17,3 +17,5 @@ Route::get('/visitors', [VisitorController::class, 'index']);
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/logs', [VisitorLogController::class, 'index']);
+
+Route::post('/check-user', [VisitorController::class, 'checkUser']);

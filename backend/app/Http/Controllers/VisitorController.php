@@ -140,4 +140,53 @@ class VisitorController extends Controller
             shell_exec($command . " 2>&1");
         }
     }
+    public function checkUser(Request $request)
+    {
+        $request->validate(['photo' => 'required|string']);
+
+        // 1. Save the temp image
+        $base64Image = $request->photo;
+        $imageParts = explode(";base64,", $base64Image);
+        $imageDecoded = base64_decode($imageParts[1]);
+        
+        $tempPath = storage_path('app/temp_recognition.jpg');
+        file_put_contents($tempPath, $imageDecoded);
+
+        // 2. Run Python Recognition
+        $pythonPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\venv\\Scripts\\python.exe";
+        $scriptPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\06_recognize_face.py";
+        
+        $command = "\"$pythonPath\" \"$scriptPath\" \"$tempPath\" 2>&1";
+        $output = shell_exec($command);
+        $cleanOutput = trim($output);
+
+        // --- NEW ROBUST LOGIC ---
+        // 1. Check if "MATCH:" exists ANYWHERE in the output (ignoring warnings)
+        if (str_contains($cleanOutput, "MATCH:")) {
+            // Extract the name using Regex (safer than splitting)
+            preg_match('/MATCH:(.+)/', $cleanOutput, $matches);
+            
+            if (isset($matches[1])) {
+                $name = trim($matches[1]);
+                $visitor = Visitor::where('FullName', $name)->first();
+                
+                if ($visitor) {
+                    return response()->json([
+                        'status' => 'FOUND',
+                        'visitor' => $visitor
+                    ]);
+                }
+            }
+        }
+
+        // 2. Return a cleaner error message to the frontend
+        $debugMsg = "Unknown Error";
+        if (str_contains($cleanOutput, "NO_FACE_DETECTED")) {
+            $debugMsg = "No face clearly visible. Please remove glasses/masks or improve lighting.";
+        } elseif (str_contains($cleanOutput, "UNKNOWN")) {
+            $debugMsg = "Face not recognized. Please register first.";
+        }
+
+        return response()->json(['status' => 'NOT_FOUND', 'debug' => $debugMsg], 404);
+    }
 }
