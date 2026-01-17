@@ -19,3 +19,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/logs', [VisitorLogController::class, 'index']);
 
 Route::post('/check-user', [VisitorController::class, 'checkUser']);
+
+// Route to get every registered visitor for the Master List
+Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
+

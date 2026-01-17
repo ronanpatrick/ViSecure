@@ -21,7 +21,10 @@ export default function AdminDashboard() {
 
     const fetchVisitors = async () => {
         try {
-            const response = await axios.get('http://127.0.0.1:8000/api/visitors');
+            // UPDATED: Points to the new Master List endpoint in Laravel
+            const response = await axios.get('http://127.0.0.1:8000/api/admin/all-visitors');
+            
+            // Laravel returns the array directly, so we set it to state
             setVisitors(response.data);
             setLoading(false);
         } catch (error) {
@@ -127,4 +130,5 @@ export default function AdminDashboard() {
 
         </div>
     );
+    
 }

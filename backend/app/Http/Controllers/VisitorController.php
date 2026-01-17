@@ -189,4 +189,12 @@ class VisitorController extends Controller
 
         return response()->json(['status' => 'NOT_FOUND', 'debug' => $debugMsg], 404);
     }
+    public function getAllVisitors()
+    {
+        // This fetches every visitor from your 'visitors' table
+        // We order by 'created_at' desc so the newest registrations appear first
+        $visitors = Visitor::orderBy('created_at', 'desc')->get();
+
+        return response()->json($visitors);
+    }
 }
