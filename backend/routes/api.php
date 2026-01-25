@@ -23,3 +23,7 @@ Route::post('/check-user', [VisitorController::class, 'checkUser']);
 // Route to get every registered visitor for the Master List
 Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
 
+Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
+
+Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
+

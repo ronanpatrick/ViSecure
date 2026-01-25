@@ -3,6 +3,7 @@ import axios from 'axios';
 import Webcam from 'react-webcam';
 import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
+import VisitorPass from './VisitorPass';
 
 export default function VisitorRegistration() {
     // --- STATE ---
@@ -154,7 +155,9 @@ export default function VisitorRegistration() {
                 name: response.data.visitor_name,
                 time: new Date().toLocaleString(),
                 status: "AUTHORIZED",
-                type: response.data.status
+                type: response.data.status,
+                // ADD THIS: Capture the ID for the QR Code
+                visitId: response.data.log_id || response.data.visitor_id 
             });
             setStep(3); 
             
@@ -325,45 +328,14 @@ export default function VisitorRegistration() {
 
                 {/* --- STEP 3: DIGITAL PASS --- */}
                 {step === 3 && successData && (
-                    <div className="fade-in">
-                         {/* Badge Header */}
-                         <div style={{ backgroundColor: colors.primary, padding: '20px', textAlign: 'center' }}>
-                             <span style={{ color: 'white', fontSize: '12px', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                                 {successData.type === 'RETURNING' ? 'Verified Entry' : 'Registered Visitor'}
-                             </span>
-                         </div>
-                         
-                         {/* Badge Body */}
-                         <div style={{ padding: '30px', border: `1px solid ${colors.border}`, borderTop: 'none', textAlign: 'center' }}>
-                             
-                             <div style={{ marginBottom: '25px' }}>
-                                 <h1 style={{ fontSize: '24px', fontWeight: '700', color: colors.primary, margin: '0 0 5px 0' }}>{successData.name}</h1>
-                                 <div style={{ width: '40px', height: '2px', backgroundColor: colors.success, margin: '15px auto' }}></div>
-                             </div>
-
-                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', textAlign: 'left' }}>
-                                 <div>
-                                     <span style={labelStyle}>Time In</span>
-                                     <div style={{ fontSize: '14px', color: colors.text }}>{successData.time.split(',')[1]}</div>
-                                 </div>
-                                 <div>
-                                     <span style={labelStyle}>Date</span>
-                                     <div style={{ fontSize: '14px', color: colors.text }}>{successData.time.split(',')[0]}</div>
-                                 </div>
-                             </div>
-
-                             <div style={{ marginTop: '30px', padding: '15px', backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                 <span style={{ fontSize: '12px', color: colors.success, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                                     • Authorized for Entry •
-                                 </span>
-                             </div>
-
-                             <div style={{ marginTop: '30px' }}>
-                                <p style={{ fontSize: '12px', color: colors.subtext, fontStyle: 'italic', margin: 0 }}>Present this screen to security.</p>
-                                <a href="/" style={{ display: 'block', marginTop: '15px', color: colors.primary, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>New Registration</a>
-                             </div>
-                         </div>
-                    </div>
+                    <VisitorPass 
+                        visitor={{ 
+                            FullName: successData.name, 
+                            AffiliationType: 'Visitor' // You can customize this if you have the data
+                        }} 
+                        visitId={successData.visitId} 
+                        onClose={() => window.location.reload()} 
+                    />
                 )}
             </div>
         </div>

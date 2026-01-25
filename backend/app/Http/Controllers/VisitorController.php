@@ -64,7 +64,10 @@ class VisitorController extends Controller
                 ? 'Registration & AI Training Complete! You may now enter.' 
                 : 'Welcome back! Your visit has been logged.',
             'visitor_name' => $visitor->FullName,
-            'status' => $isNewUser ? 'TRAINED' : 'RETURNING'
+            'status' => $isNewUser ? 'TRAINED' : 'RETURNING',
+            // ADD THESE TWO LINES:
+            'visitor_id' => $visitor->VisitorID,
+            'log_id' => $log->id 
         ], 201);
     }
 
@@ -196,5 +199,35 @@ class VisitorController extends Controller
         $visitors = Visitor::orderBy('created_at', 'desc')->get();
 
         return response()->json($visitors);
+    }
+
+    // --- CHECKOUT LOGIC ---
+    public function checkout(Request $request)
+    {
+        // 1. Validate we got the Log ID from the QR code
+        $request->validate(['log_id' => 'required|integer']);
+
+        // 2. Find the Log
+        $log = VisitLog::find($request->log_id);
+
+        if (!$log) {
+            return response()->json(['message' => 'Visit record not found.'], 404);
+        }
+
+        // 3. Check if already checked out
+        if ($log->ExitTimestamp) {
+            return response()->json(['message' => 'Visitor already checked out.'], 400);
+        }
+
+        // 4. Mark the time
+        $log->ExitTimestamp = now();
+        $log->save();
+
+        // 5. Return success and the time
+        return response()->json([
+            'message' => 'Checkout Successful',
+            'time_out' => $log->ExitTimestamp->toTimeString(),
+            'visitor_name' => $log->visitor->FullName // Assuming relationship exists
+        ]);
     }
 }

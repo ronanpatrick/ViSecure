@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import VisitorLogs from './VisitorLogs'; // <--- 1. IMPORT THE NEW COMPONENT
+import CheckoutScanner from './CheckoutScanner';
 
 export default function AdminDashboard() {
     const [visitors, setVisitors] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const [showScanner, setShowScanner] = useState(false);
 
     // 1. Fetch data from Laravel when the page loads
     useEffect(() => {
@@ -77,12 +79,23 @@ export default function AdminDashboard() {
 
     return (
         <div style={pageStyle}>
-            {/* Header + Logout Button */}
+            {/* Header + Buttons */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h1 style={{ color: '#333', margin: 0 }}>Admin Dashboard</h1>
-                <button onClick={handleLogout} style={logoutBtnStyle}>
-                    Logout
-                </button>
+                
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    {/* NEW: GREEN SCAN BUTTON */}
+                    <button 
+                        onClick={() => setShowScanner(true)} 
+                        style={{ ...logoutBtnStyle, backgroundColor: '#28a745' }} 
+                    >
+                        📷 Scan Exit
+                    </button>
+
+                    <button onClick={handleLogout} style={logoutBtnStyle}>
+                        Logout
+                    </button>
+                </div>
             </div>
             
             {/* SECTION 1: REGISTERED VISITORS */}
@@ -127,8 +140,20 @@ export default function AdminDashboard() {
             <div style={{ marginTop: '40px' }}>
                 <VisitorLogs />
             </div>
+            
+            {/* NEW: CHECKOUT SCANNER MODAL */}
+            {showScanner && (
+                <CheckoutScanner 
+                    onClose={() => setShowScanner(false)}
+                    onSuccess={() => {
+                        setShowScanner(false);
+                        fetchVisitors(); 
+                    }}
+                />
+            )}
 
         </div>
+
     );
     
 }
