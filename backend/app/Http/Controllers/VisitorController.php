@@ -65,52 +65,69 @@ class VisitorController extends Controller
                 : 'Welcome back! Your visit has been logged.',
             'visitor_name' => $visitor->FullName,
             'status' => $isNewUser ? 'TRAINED' : 'RETURNING',
-            // ADD THESE TWO LINES:
+            
             'visitor_id' => $visitor->VisitorID,
-            'log_id' => $log->id 
+            
+            // --- CHANGE THIS LINE ---
+            // Old: 'log_id' => $log->id 
+            // New: Uses the actual primary key (VisitLogID, id, etc.)
+            'log_id' => $log->getKey() 
+            // ------------------------
         ], 201);
     }
 
-    // --- HELPER FUNCTION: STRICTER VERSION (With Zombie Cleanup) ---
+    // --- HELPER FUNCTION: SAVES TO BOTH AI AND STORAGE FOLDERS ---
     private function savePhotosAndTrain($visitor, $photos)
     {
         $name = $visitor->FullName;
 
-        // 1. Create Folder
-        $basePath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\dataset";
-        $userFolder = $basePath . "\\" . $name;
+        // 1. Define Paths
+        // Path A: AI Engine (For the Python Script)
+        $aiBasePath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\dataset";
+        $aiUserFolder = $aiBasePath . "\\" . $name;
 
-        if (!file_exists($userFolder)) {
-            mkdir($userFolder, 0777, true);
+        // Path B: Laravel Storage (For Backup & Website Display)
+        // This effectively points to 'storage/app/public/photos/{name}'
+        $storageFolder = "photos/" . $name; 
+
+        // 2. Create Folders if they don't exist
+        if (!file_exists($aiUserFolder)) {
+            mkdir($aiUserFolder, 0777, true);
+        }
+        if (!Storage::disk('public')->exists($storageFolder)) {
+            Storage::disk('public')->makeDirectory($storageFolder);
         }
 
-        // Paths
+        // Python Configuration
         $pythonPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\venv\\Scripts\\python.exe";
         $validatorScript = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\05_validate_face.py";
         $trainerScript = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\02_face_training.py";
 
         $validFaceCount = 0;
-        $checksNeeded = 3; // We will check the first 3 photos
+        $checksNeeded = 3; 
 
-        // 2. Loop through photos
+        // 3. Loop through photos
         foreach ($photos as $index => $base64Image) {
             $imageParts = explode(";base64,", $base64Image);
             if (count($imageParts) < 2) continue; 
             
             $imageDecoded = base64_decode($imageParts[1]);
-            $filePath = $userFolder . "\\image_" . $index . ".jpg";
             
-            // Save file
-            file_put_contents($filePath, $imageDecoded);
+            // SAVE TO LOCATION A (AI Engine)
+            $aiFilePath = $aiUserFolder . "\\image_" . $index . ".jpg";
+            file_put_contents($aiFilePath, $imageDecoded);
 
-            // 3. STRICT CHECK: Run Validator on the first 3 images
+            // SAVE TO LOCATION B (Laravel Storage)
+            $storageFilePath = $storageFolder . "/image_" . $index . ".jpg";
+            Storage::disk('public')->put($storageFilePath, $imageDecoded);
+
+            // 4. Run Validator (Using the AI Path)
             if ($index < $checksNeeded) {
-                $command = "\"$pythonPath\" \"$validatorScript\" \"$filePath\" 2>&1";
+                $command = "\"$pythonPath\" \"$validatorScript\" \"$aiFilePath\" 2>&1";
                 
                 $output = [];
                 exec($command, $output); 
 
-                // SEARCH FOR KEYWORD "DETECTED_FACE"
                 $faceFound = false;
                 foreach ($output as $line) {
                     if (trim($line) === "DETECTED_FACE") {
@@ -121,15 +138,16 @@ class VisitorController extends Controller
 
                 if (!$faceFound) {
                     // --- FAIL CLEANUP ---
+                    // Delete AI folder
+                    array_map('unlink', glob("$aiUserFolder/*.*"));
+                    rmdir($aiUserFolder);
                     
-                    // 1. Delete the bad photos folder
-                    array_map('unlink', glob("$userFolder/*.*"));
-                    rmdir($userFolder);
+                    // Delete Storage folder
+                    Storage::disk('public')->deleteDirectory($storageFolder);
 
-                    // 2. IMPORTANT: DELETE THE ZOMBIE USER FROM DATABASE 🧟‍♂️🔫
+                    // Delete User from DB
                     $visitor->delete();
                     
-                    // 3. Stop Everything
                     abort(422, "⚠️ Validation Failed on Photo #".($index+1).": No face detected. Please hold still and align your face.");
                 }
                 
@@ -137,12 +155,13 @@ class VisitorController extends Controller
             }
         }
 
-        // 4. Run Training ONLY if we passed all checks
+        // 5. Run Training
         if ($validFaceCount >= $checksNeeded) {
             $command = "\"$pythonPath\" \"$trainerScript\"";
             shell_exec($command . " 2>&1");
         }
     }
+
     public function checkUser(Request $request)
     {
         $request->validate(['photo' => 'required|string']);
@@ -204,30 +223,36 @@ class VisitorController extends Controller
     // --- CHECKOUT LOGIC ---
     public function checkout(Request $request)
     {
-        // 1. Validate we got the Log ID from the QR code
-        $request->validate(['log_id' => 'required|integer']);
+        // 1. Validate the input
+        // We accept 'log_id' because that is what the frontend sends
+        $request->validate([
+            'log_id' => 'required' 
+        ]);
 
-        // 2. Find the Log
+        // 2. Find the Log using your custom Primary Key 'LogID'
+        // Since your model says: protected $primaryKey = 'LogID';
+        // The find() function automatically knows to look for LogID.
         $log = VisitLog::find($request->log_id);
 
         if (!$log) {
             return response()->json(['message' => 'Visit record not found.'], 404);
         }
 
-        // 3. Check if already checked out
+        // 3. Check if they already checked out
         if ($log->ExitTimestamp) {
             return response()->json(['message' => 'Visitor already checked out.'], 400);
         }
 
-        // 4. Mark the time
+        // 4. Mark the exit time
         $log->ExitTimestamp = now();
+        $log->Status = 'Completed'; // Optional: Good practice to update status
         $log->save();
 
-        // 5. Return success and the time
+        // 5. Return success (SAFE VERSION)
+        // We removed "$log->visitor->FullName" because it was crashing the server.
         return response()->json([
             'message' => 'Checkout Successful',
             'time_out' => $log->ExitTimestamp->toTimeString(),
-            'visitor_name' => $log->visitor->FullName // Assuming relationship exists
-        ]);
+        ], 200);
     }
 }

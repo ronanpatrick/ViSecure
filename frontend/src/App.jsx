@@ -4,6 +4,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import VisitorLogs from './components/VisitorLogs';
+import SelfCheckout from './components/SelfCheckout';
 
 function App() {
   return (
@@ -27,6 +28,9 @@ function App() {
 
         {/* 4. Catch-all: Redirect unknown links back to Registration */}
         <Route path="*" element={<Navigate to="/" />} />
+
+        <Route path="/exit" element={<SelfCheckout />} />
+        
       </Routes>
     </div>
   );

@@ -151,14 +151,25 @@ export default function VisitorRegistration() {
             const payload = { ...formData, photos: step === 2 ? photos : [] };
             const response = await axios.post('http://127.0.0.1:8000/api/register', payload);
             
+            // --- ADD THIS LOG TO SEE WHAT THE SERVER SAYS ---
+            console.log("Full Server Response:", response.data);
+
+            // This captures the ID whether it's a new log or a visitor ID
+            const idToSave = response.data.log_id || response.data.visitor_id;
+
+            if (idToSave) {
+                localStorage.setItem('active_visit_id', idToSave);
+                console.log("Successfully saved ID:", idToSave);
+            }
+
             setSuccessData({
                 name: response.data.visitor_name,
                 time: new Date().toLocaleString(),
                 status: "AUTHORIZED",
                 type: response.data.status,
-                // ADD THIS: Capture the ID for the QR Code
-                visitId: response.data.log_id || response.data.visitor_id 
+                visitId: idToSave 
             });
+            
             setStep(3); 
             
         } catch (err) {

@@ -25,5 +25,3 @@ Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
 
 Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
 
-Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
-
