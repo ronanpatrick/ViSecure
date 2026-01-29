@@ -81,13 +81,12 @@ class VisitorController extends Controller
     {
         $name = $visitor->FullName;
 
-        // 1. Define Paths
-        // Path A: AI Engine (For the Python Script)
-        $aiBasePath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\dataset";
-        $aiUserFolder = $aiBasePath . "\\" . $name;
+        // 1. Define Paths using .ENV (Portable!)
+        $aiBasePath = env('AI_ENGINE_PATH'); // C:\VSCode Projects\...\ai_engine
+        $aiDatasetFolder = $aiBasePath . "\\dataset"; 
+        $aiUserFolder = $aiDatasetFolder . "\\" . $name;
 
         // Path B: Laravel Storage (For Backup & Website Display)
-        // This effectively points to 'storage/app/public/photos/{name}'
         $storageFolder = "photos/" . $name; 
 
         // 2. Create Folders if they don't exist
@@ -98,10 +97,10 @@ class VisitorController extends Controller
             Storage::disk('public')->makeDirectory($storageFolder);
         }
 
-        // Python Configuration
-        $pythonPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\venv\\Scripts\\python.exe";
-        $validatorScript = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\05_validate_face.py";
-        $trainerScript = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\02_face_training.py";
+        // Python Configuration (Using .ENV)
+        $pythonPath = env('AI_PYTHON_PATH');
+        $validatorScript = $aiBasePath . "\\05_validate_face.py";
+        $trainerScript = $aiBasePath . "\\02_face_training.py";
 
         $validFaceCount = 0;
         $checksNeeded = 3; 
@@ -123,6 +122,7 @@ class VisitorController extends Controller
 
             // 4. Run Validator (Using the AI Path)
             if ($index < $checksNeeded) {
+                // IMPORTANT: Added quotes around paths to handle spaces
                 $command = "\"$pythonPath\" \"$validatorScript\" \"$aiFilePath\" 2>&1";
                 
                 $output = [];
@@ -166,26 +166,36 @@ class VisitorController extends Controller
     {
         $request->validate(['photo' => 'required|string']);
 
-        // 1. Save the temp image
+        // --- 1. GENERATE UNIQUE FILENAME (The Fix) ---
+        // Using uniqid() prevents multiple users from overwriting the same file
+        $uniqueId = uniqid(); 
+        $fileName = "temp_recognition_{$uniqueId}.jpg";
+        $tempPath = storage_path("app/{$fileName}"); 
+
+        // 2. Save the temp image to the UNIQUE path
         $base64Image = $request->photo;
         $imageParts = explode(";base64,", $base64Image);
         $imageDecoded = base64_decode($imageParts[1]);
-        
-        $tempPath = storage_path('app/temp_recognition.jpg');
         file_put_contents($tempPath, $imageDecoded);
 
-        // 2. Run Python Recognition
-        $pythonPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\venv\\Scripts\\python.exe";
-        $scriptPath = "C:\\VSCode Projects\\ViSecure_project\\ai_engine\\06_recognize_face.py";
+        // 3. Run Python Recognition (Using .ENV)
+        $pythonPath = env('AI_PYTHON_PATH');
+        $aiBasePath = env('AI_ENGINE_PATH');
+        $scriptPath = $aiBasePath . "\\06_recognize_face.py";
         
         $command = "\"$pythonPath\" \"$scriptPath\" \"$tempPath\" 2>&1";
         $output = shell_exec($command);
         $cleanOutput = trim($output);
 
+        // --- 4. CLEAN UP IMMEDIATELY ---
+        // Delete the specific temp file so it doesn't clutter the server
+        if (file_exists($tempPath)) {
+            unlink($tempPath);
+        }
+
         // --- NEW ROBUST LOGIC ---
-        // 1. Check if "MATCH:" exists ANYWHERE in the output (ignoring warnings)
+        // 5. Check if "MATCH:" exists ANYWHERE in the output
         if (str_contains($cleanOutput, "MATCH:")) {
-            // Extract the name using Regex (safer than splitting)
             preg_match('/MATCH:(.+)/', $cleanOutput, $matches);
             
             if (isset($matches[1])) {
@@ -201,7 +211,7 @@ class VisitorController extends Controller
             }
         }
 
-        // 2. Return a cleaner error message to the frontend
+        // 6. Return a cleaner error message
         $debugMsg = "Unknown Error";
         if (str_contains($cleanOutput, "NO_FACE_DETECTED")) {
             $debugMsg = "No face clearly visible. Please remove glasses/masks or improve lighting.";
@@ -211,6 +221,7 @@ class VisitorController extends Controller
 
         return response()->json(['status' => 'NOT_FOUND', 'debug' => $debugMsg], 404);
     }
+
     public function getAllVisitors()
     {
         // This fetches every visitor from your 'visitors' table
