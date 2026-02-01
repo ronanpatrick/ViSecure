@@ -76,20 +76,23 @@ class VisitorController extends Controller
         ], 201);
     }
 
-    // --- HELPER FUNCTION: SAVES TO BOTH AI AND STORAGE FOLDERS ---
+    // --- DEBUG VERSION: SAVES TO BOTH AI AND STORAGE FOLDERS ---
     private function savePhotosAndTrain($visitor, $photos)
     {
         $name = $visitor->FullName;
+        
+        // LOGGING START
+        \Log::info("🟢 START REGISTRATION for: $name");
 
-        // 1. Define Paths using .ENV (Portable!)
-        $aiBasePath = env('AI_ENGINE_PATH'); // C:\VSCode Projects\...\ai_engine
+        // 1. Define Paths using .ENV
+        $aiBasePath = env('AI_ENGINE_PATH'); 
         $aiDatasetFolder = $aiBasePath . "\\dataset"; 
         $aiUserFolder = $aiDatasetFolder . "\\" . $name;
-
-        // Path B: Laravel Storage (For Backup & Website Display)
         $storageFolder = "photos/" . $name; 
 
-        // 2. Create Folders if they don't exist
+        \Log::info("📂 AI Folder: $aiUserFolder");
+
+        // 2. Create Folders
         if (!file_exists($aiUserFolder)) {
             mkdir($aiUserFolder, 0777, true);
         }
@@ -97,7 +100,7 @@ class VisitorController extends Controller
             Storage::disk('public')->makeDirectory($storageFolder);
         }
 
-        // Python Configuration (Using .ENV)
+        // Python Configuration
         $pythonPath = env('AI_PYTHON_PATH');
         $validatorScript = $aiBasePath . "\\05_validate_face.py";
         $trainerScript = $aiBasePath . "\\02_face_training.py";
@@ -107,48 +110,51 @@ class VisitorController extends Controller
 
         // 3. Loop through photos
         foreach ($photos as $index => $base64Image) {
+            \Log::info("📸 Processing Photo #$index"); // LOG
+            
             $imageParts = explode(";base64,", $base64Image);
-            if (count($imageParts) < 2) continue; 
+            if (count($imageParts) < 2) {
+                 \Log::error("❌ Invalid Image Format on #$index");
+                 continue; 
+            }
             
             $imageDecoded = base64_decode($imageParts[1]);
             
-            // SAVE TO LOCATION A (AI Engine)
+            // SAVE
             $aiFilePath = $aiUserFolder . "\\image_" . $index . ".jpg";
             file_put_contents($aiFilePath, $imageDecoded);
-
-            // SAVE TO LOCATION B (Laravel Storage)
             $storageFilePath = $storageFolder . "/image_" . $index . ".jpg";
             Storage::disk('public')->put($storageFilePath, $imageDecoded);
 
-            // 4. Run Validator (Using the AI Path)
+            // 4. Run Validator
             if ($index < $checksNeeded) {
-                // IMPORTANT: Added quotes around paths to handle spaces
                 $command = "\"$pythonPath\" \"$validatorScript\" \"$aiFilePath\" 2>&1";
                 
                 $output = [];
                 exec($command, $output); 
+                
+                // LOG THE PYTHON OUTPUT
+                \Log::info("🐍 Python Output #$index: " . implode(" | ", $output));
 
                 $faceFound = false;
                 foreach ($output as $line) {
-                    if (trim($line) === "DETECTED_FACE") {
+                    if (str_contains($line, "DETECTED_FACE")) {
                         $faceFound = true;
                         break;
                     }
                 }
 
                 if (!$faceFound) {
-                    // --- FAIL CLEANUP ---
-                    // Delete AI folder
+                    \Log::error("❌ NO FACE FOUND in Photo #$index. Aborting."); // LOG FAILURE
+                    
+                    // Cleanup
                     array_map('unlink', glob("$aiUserFolder/*.*"));
                     rmdir($aiUserFolder);
-                    
-                    // Delete Storage folder
                     Storage::disk('public')->deleteDirectory($storageFolder);
-
-                    // Delete User from DB
                     $visitor->delete();
                     
-                    abort(422, "⚠️ Validation Failed on Photo #".($index+1).": No face detected. Please hold still and align your face.");
+                    // THROW ERROR
+                    abort(422, "⚠️ No face detected in Photo #".($index+1).". (Check Lighting!)");
                 }
                 
                 $validFaceCount++;
@@ -157,9 +163,13 @@ class VisitorController extends Controller
 
         // 5. Run Training
         if ($validFaceCount >= $checksNeeded) {
+            \Log::info("🧠 Starting Training...");
             $command = "\"$pythonPath\" \"$trainerScript\"";
-            shell_exec($command . " 2>&1");
+            $trainOutput = shell_exec($command . " 2>&1");
+            \Log::info("🧠 Training Output: $trainOutput");
         }
+        
+        \Log::info("✅ REGISTRATION COMPLETE for $name");
     }
 
     public function checkUser(Request $request)

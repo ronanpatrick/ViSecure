@@ -64,7 +64,8 @@ export default function VisitorRegistration() {
     const handleLoginCheck = async (photo) => {
         setMessage('Identifying...');
         try {
-            const response = await axios.post('http://127.0.0.1:8000/api/check-user', { photo });
+            // CHANGE: Use the variable instead of 127.0.0.1
+            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/check-user`, { photo });
             const user = response.data.visitor;
             setFormData({
                 FullName: user.FullName,
@@ -77,7 +78,6 @@ export default function VisitorRegistration() {
             setMessage('');
         } catch (err) {
             console.error(err);
-            // --- SHOW THE REAL SERVER ERROR ---
             const debugMsg = err.response?.data?.debug || 'Unknown Error';
             setError(`Login Failed: ${debugMsg}`); 
             setStep(0);
@@ -149,17 +149,17 @@ export default function VisitorRegistration() {
 
         try {
             const payload = { ...formData, photos: step === 2 ? photos : [] };
-            const response = await axios.post('http://127.0.0.1:8000/api/register', payload);
             
-            // --- ADD THIS LOG TO SEE WHAT THE SERVER SAYS ---
+            // CHANGE: Use the variable instead of 127.0.0.1
+            // CHANGE: Ensure endpoint is /api/register
+            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/register`, payload);
+            
             console.log("Full Server Response:", response.data);
 
-            // This captures the ID whether it's a new log or a visitor ID
             const idToSave = response.data.log_id || response.data.visitor_id;
 
             if (idToSave) {
                 localStorage.setItem('active_visit_id', idToSave);
-                console.log("Successfully saved ID:", idToSave);
             }
 
             setSuccessData({
@@ -175,7 +175,10 @@ export default function VisitorRegistration() {
         } catch (err) {
             console.error(err);
             setPhotos([]); 
-            setError('Registration failed. ' + (err.response?.data?.message || 'System Error.'));
+            // Better error handling to see what went wrong
+            const serverMsg = err.response?.data?.message || err.message;
+            setError('Registration failed: ' + serverMsg);
+            
             if (step === 2) {
                 setFaceDetected(false);
                 setTimeout(() => startFaceDetection(), 2000);
