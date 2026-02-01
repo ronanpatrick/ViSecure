@@ -28,7 +28,7 @@ export default function SelfCheckout() {
             try {
                 setStatus('Processing your checkout...');
                 
-                await axios.post('http://127.0.0.1:8000/api/admin/checkout', {
+                await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/admin/checkout`, {
                     log_id: visitId
                 });
 
