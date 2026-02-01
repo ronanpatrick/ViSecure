@@ -287,6 +287,7 @@ export default function VisitorRegistration() {
                                     screenshotFormat="image/jpeg"
                                     videoConstraints={videoConstraints}
                                     onUserMedia={startFaceDetection} 
+                                    mirrored={true}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }}
                                 />
                                 
