@@ -276,4 +276,26 @@ class VisitorController extends Controller
             'time_out' => $log->ExitTimestamp->toTimeString(),
         ], 200);
     }
+
+    // --- NEW: TOGGLE BAN STATUS ---
+    public function toggleStatus($id)
+    {
+        // 1. Find the visitor
+        $visitor = Visitor::find($id);
+
+        if (!$visitor) {
+            return response()->json(['message' => 'Visitor not found'], 404);
+        }
+
+        // 2. Toggle the status
+        // If currently Banned -> make Active. Else -> make Banned.
+        $visitor->Status = ($visitor->Status === 'Banned') ? 'Active' : 'Banned';
+        $visitor->save();
+
+        return response()->json([
+            'message' => 'Visitor status updated',
+            'new_status' => $visitor->Status,
+            'id' => $visitor->VisitorID
+        ]);
+    }
 }

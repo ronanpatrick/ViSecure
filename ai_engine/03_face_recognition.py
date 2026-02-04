@@ -10,52 +10,50 @@ DB_CONFIG = {
     'host': "127.0.0.1",
     'user': "root",
     'password': "",
-    'database': "visecure_db" # Verify this matches your .env
+    'database': "visecure_db" 
 }
 
 # --- COOLDOWN SYSTEM ---
-# This prevents spamming the database with 100 logs per minute
 # Format: { visitor_id : timestamp_of_last_log }
 log_cooldowns = {}
-COOLDOWN_SECONDS = 60  # Wait 60 seconds before logging the same person again
+COOLDOWN_SECONDS = 60 
 
-def get_visitor_name(visitor_id):
-    """ Fetch Visitor Name from Database """
+def get_visitor_info(visitor_id):
+    """ Fetch Name AND Status from Database """
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
-        # NOTE: We are now querying the VISITORS table, not USERS
-        # Make sure your visitors table has a column 'First_Name' or 'Name'
-        # Adjust 'First_Name' below to match your actual column name
-        query = "SELECT FullName FROM visitors WHERE VisitorID = %s"
+        # Query for Name AND Status
+        query = "SELECT FullName, Status FROM visitors WHERE VisitorID = %s"
         cursor.execute(query, (visitor_id,))
         result = cursor.fetchone()
         conn.close()
         
         if result:
-            return result[0]
-        return "Unknown"
+            # Return (Name, Status) - Default to 'Active' if null
+            status = result[1] if result[1] else 'Active'
+            return result[0], status
+        return "Unknown", "Active"
     except Exception as e:
         print(f"[DB Reading Error] {e}")
-        return "Error"
+        return "Error", "Active"
 
 def log_visit_to_db(visitor_id):
     """ Insert a new record into visit_logs """
-    # 1. Check Cooldown
     current_time = time.time()
+    
+    # 1. Check Cooldown
     if visitor_id in log_cooldowns:
         last_time = log_cooldowns[visitor_id]
         if current_time - last_time < COOLDOWN_SECONDS:
-            return # Too soon, skip logging
+            return 
 
     # 2. Insert Log
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
-        # We only insert VisitorID. 
-        # EntryTimestamp is automatic. Status defaults to Active.
         sql = """INSERT INTO visit_logs (VisitorID, PurposeOfVisit) 
                  VALUES (%s, %s)"""
         val = (visitor_id, "Face Recognition Entry")
@@ -64,17 +62,25 @@ def log_visit_to_db(visitor_id):
         conn.commit()
         conn.close()
         
-        # Update cooldown
         log_cooldowns[visitor_id] = current_time
         print(f"\n [SUCCESS] Visit Logged for ID {visitor_id}!")
         
     except mysql.connector.Error as err:
         print(f"\n [DB Writing Error] {err}")
-        print("Tip: Does VisitorID exist in the 'visitors' table?")
 
 # --- MAIN RECOGNITION LOOP ---
 recognizer = cv2.face.LBPHFaceRecognizer_create()
-recognizer.read('trainer/trainer.yml')
+
+# Get the folder where this script is running
+script_dir = os.path.dirname(os.path.abspath(__file__))
+trainer_path = os.path.join(script_dir, 'trainer', 'trainer.yml')
+
+try:
+    recognizer.read(trainer_path)
+except cv2.error:
+    print(f"\n[ERROR] Could not find trainer file at: {trainer_path}")
+    print("Tip: Did you run '02_face_training.py' to generate it yet?")
+    exit()
 
 faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 font = cv2.FONT_HERSHEY_SIMPLEX
@@ -101,22 +107,31 @@ while True:
         id, confidence = recognizer.predict(gray[y:y+h,x:x+w])
 
         if (confidence < 100):
-            # 1. Get Name (and Cache it)
+            # 1. Get Name AND Status
             if id not in names_cache:
-                names_cache[id] = get_visitor_name(id)
-            name = names_cache[id]
+                names_cache[id] = get_visitor_info(id)
             
-            # 2. LOG THE VISIT (The Magic Step)
-            # Only log if we successfully found a name (ID exists)
-            if name != "Unknown" and name != "Error":
-                log_visit_to_db(id)
+            name, status = names_cache[id]
+            
+            # 2. CHECK STATUS (The Enforcer Logic)
+            if status == 'Banned':
+                display_name = "ACCESS DENIED"
+                color = (0, 0, 255) # RED Text
+                # We DO NOT log the visit
+            else:
+                display_name = name
+                color = (255, 255, 255) # White Text
+                
+                if name != "Unknown" and name != "Error":
+                    log_visit_to_db(id)
 
             conf_text = "  {0}%".format(round(100 - confidence))
         else:
-            name = "Unknown"
+            display_name = "Unknown"
+            color = (255, 255, 255)
             conf_text = "  {0}%".format(round(100 - confidence))
         
-        cv2.putText(img, str(name), (x+5,y-5), font, 1, (255,255,255), 2)
+        cv2.putText(img, str(display_name), (x+5,y-5), font, 1, color, 2)
         cv2.putText(img, str(conf_text), (x+5,y+h-5), font, 1, (255,255,0), 1)  
 
     cv2.imshow('ViSecure Recognition', img) 

@@ -25,3 +25,6 @@ Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
 
 Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
 
+// Route to Toggle Status (Ban/Unban)
+Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
+
