@@ -21,7 +21,7 @@ class VisitorController extends Controller
             'photos' => 'array', 
         ]);
 
-        // 2. SMART FORK: Check if Visitor already exists
+        // 2. Check if Visitor already exists by Name
         $visitor = Visitor::where('FullName', $validated['FullName'])->first();
         $isNewUser = false;
 
@@ -29,7 +29,71 @@ class VisitorController extends Controller
             // --- PATH A: NEW VISITOR ---
             $isNewUser = true;
 
-            // Create the record first (so we have an ID/Name)
+            // =========================================================
+            // 🛑 NEW SECURITY FEATURE: DUPLICATE FACE CHECK
+            // =========================================================
+            if ($request->has('photos') && count($request->photos) > 0) {
+                // A. Save the first photo temporarily
+                $base64Image = $request->photos[0];
+                // Check if image data is valid
+                if (str_contains($base64Image, ";base64,")) {
+                    $imageParts = explode(";base64,", $base64Image);
+                    $imageDecoded = base64_decode($imageParts[1]);
+                    
+                    // Generate a unique temp filename to avoid conflicts
+                    $tempPath = storage_path('app/temp_check_' . uniqid() . '.jpg');
+                    file_put_contents($tempPath, $imageDecoded);
+
+                    // B. Run Python Script (07_check_duplicate.py)
+                    $pythonPath = env('AI_PYTHON_PATH'); 
+                    
+                    // ✅ CORRECT: Use the .env path so it looks in the right folder
+                    $aiBasePath = env('AI_ENGINE_PATH');
+                    $scriptPath = $aiBasePath . "\\07_check_duplicate.py"; 
+                    
+                    // Execute command
+                    $command = "\"$pythonPath\" \"$scriptPath\" \"$tempPath\" 2>&1";
+                    $output = shell_exec($command);
+
+                    // ========================================================
+                    // ⬇️ ADD THIS LINE RIGHT HERE ⬇️
+                    // ========================================================
+                    \Log::info("🤖 DUPLICATE CHECK RAW OUTPUT: " . $output); 
+                    // ========================================================
+                    
+                    // C. Cleanup Temp File
+                    if (file_exists($tempPath)) {
+                        unlink($tempPath);
+                    }
+                    
+                    // C. Cleanup Temp File
+                    if (file_exists($tempPath)) {
+                        unlink($tempPath);
+                    }
+
+                    // D. Parse Result
+                    if (str_contains($output, "DUPLICATE_FOUND:")) {
+                        // Extract the ID of the person this face belongs to
+                        preg_match('/DUPLICATE_FOUND:(\d+)/', $output, $matches);
+                        $duplicateID = $matches[1] ?? null;
+
+                        if ($duplicateID) {
+                            $duplicateUser = Visitor::find($duplicateID);
+                            $duplicateName = $duplicateUser ? $duplicateUser->FullName : "Another User";
+
+                            // STOP REGISTRATION HERE
+                            return response()->json([
+                                'message' => "Registration Blocked: This face is already registered as '$duplicateName'. Please Log In instead."
+                            ], 422);
+                        }
+                    }
+                }
+            }
+            // =========================================================
+            // 🛑 END OF DUPLICATE CHECK
+            // =========================================================
+
+            // Create the record (Only if no duplicate was found)
             $visitor = Visitor::create([
                 'FullName' => $validated['FullName'],
                 'Age' => $request->Age,
@@ -39,9 +103,9 @@ class VisitorController extends Controller
                 'EmailAddress' => $request->EmailAddress ?? null,
             ]);
 
-            // CHECK PHOTOS
+            // CHECK PHOTOS & TRAIN AI
             if ($request->has('photos') && count($request->photos) > 0) {
-                // We pass the WHOLE visitor object now, so we can delete it if it fails
+                // We pass the WHOLE visitor object now, so we can delete it if training fails
                 $this->savePhotosAndTrain($visitor, $request->photos);
             }
         } 
@@ -67,12 +131,7 @@ class VisitorController extends Controller
             'status' => $isNewUser ? 'TRAINED' : 'RETURNING',
             
             'visitor_id' => $visitor->VisitorID,
-            
-            // --- CHANGE THIS LINE ---
-            // Old: 'log_id' => $log->id 
-            // New: Uses the actual primary key (VisitLogID, id, etc.)
             'log_id' => $log->getKey() 
-            // ------------------------
         ], 201);
     }
 
