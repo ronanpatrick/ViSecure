@@ -19,6 +19,7 @@ class VisitorController extends Controller
             'PurposeOfVisit' => 'required|string',
             'PersonToVisit' => 'nullable|string',
             'photos' => 'array', 
+            'photos.*' => 'string', // Ensure strictly base64 string
         ]);
 
         // 2. Check if Visitor already exists by Name
@@ -35,6 +36,13 @@ class VisitorController extends Controller
             if ($request->has('photos') && count($request->photos) > 0) {
                 // A. Save the first photo temporarily
                 $base64Image = $request->photos[0];
+                // Limit size to approx 10MB (14,000,000 characters of Base64)
+                if (strlen($base64Image) > 14000000) { 
+                    return response()->json([
+                        'message' => 'Image too large. Please use a lower resolution.'
+                    ], 422);
+                }
+
                 // Check if image data is valid
                 if (str_contains($base64Image, ";base64,")) {
                     $imageParts = explode(";base64,", $base64Image);
