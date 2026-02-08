@@ -4,6 +4,7 @@ import Webcam from 'react-webcam';
 import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
 import VisitorPass from './VisitorPass';
+import { resizeBase64 } from '../utils/imageResizer'; // 👈 IMPORT THE RESIZER
 
 export default function VisitorRegistration() {
     // --- STATE ---
@@ -64,8 +65,10 @@ export default function VisitorRegistration() {
     const handleLoginCheck = async (photo) => {
         setMessage('Identifying...');
         try {
-            // CHANGE: Use the variable instead of 127.0.0.1
-            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/check-user`, { photo });
+            // ⚡ RESIZE SINGLE PHOTO FOR LOGIN
+            const compressedPhoto = await resizeBase64(photo);
+
+            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/check-user`, { photo: compressedPhoto });
             const user = response.data.visitor;
             setFormData({
                 FullName: user.FullName,
@@ -91,11 +94,8 @@ export default function VisitorRegistration() {
         
         let count = 0;
         const tempPhotos = [];
-        
-        // ALWAYS take 5 photos. This gives the camera time to adjust light/focus.
         const limit = 5; 
 
-        // Interval: 300ms (Total scan time = 1.5 seconds)
         const interval = setInterval(() => {
             if (webcamRef.current) {
                 const imageSrc = webcamRef.current.getScreenshot();
@@ -111,13 +111,12 @@ export default function VisitorRegistration() {
                 setIsCapturing(false);
                 
                 // IF RETURNING VISITOR (Step 4):
-                // Send the LAST photo (Index 4). It is usually the sharpest.
                 if (step === 4) handleLoginCheck(tempPhotos[4]);
             }
         }, 300); 
     }, [webcamRef, step]);
 
-    // --- FACE SEARCH LOOP (With Focus Delay) ---
+    // --- FACE SEARCH LOOP ---
     const startFaceDetection = useCallback(() => {
         if (detectionInterval.current) clearInterval(detectionInterval.current);
         detectionInterval.current = setInterval(async () => {
@@ -126,9 +125,6 @@ export default function VisitorRegistration() {
                 if (predictions.length > 0) {
                     clearInterval(detectionInterval.current); 
                     setFaceDetected(true);
-                    
-                    // --- THE FIX: WAIT 500ms BEFORE CAPTURING ---
-                    // This gives the autofocus time to lock on to your face.
                     setTimeout(() => {
                         startBurstCapture();
                     }, 500);
@@ -148,19 +144,23 @@ export default function VisitorRegistration() {
         }
 
         try {
-            const payload = { ...formData, photos: step === 2 ? photos : [] };
+            setMessage('Processing biometric data...'); // Feedback to user
+
+            // ⚡ COMPRESS ALL PHOTOS BEFORE SENDING ⚡
+            // This prevents "Payload Too Large" errors
+            let processedPhotos = [];
+            if (step === 2) {
+                 processedPhotos = await Promise.all(photos.map(p => resizeBase64(p)));
+            }
+
+            const payload = { ...formData, photos: processedPhotos };
             
-            // CHANGE: Use the variable instead of 127.0.0.1
-            // CHANGE: Ensure endpoint is /api/register
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/register`, payload);
             
             console.log("Full Server Response:", response.data);
 
             const idToSave = response.data.log_id || response.data.visitor_id;
-
-            if (idToSave) {
-                localStorage.setItem('active_visit_id', idToSave);
-            }
+            if (idToSave) localStorage.setItem('active_visit_id', idToSave);
 
             setSuccessData({
                 name: response.data.visitor_name,
@@ -175,7 +175,6 @@ export default function VisitorRegistration() {
         } catch (err) {
             console.error(err);
             setPhotos([]); 
-            // Better error handling to see what went wrong
             const serverMsg = err.response?.data?.message || err.message;
             setError('Registration failed: ' + serverMsg);
             
@@ -188,9 +187,9 @@ export default function VisitorRegistration() {
 
     // --- MINIMALIST STYLES ---
     const colors = {
-        primary: '#2c3e50', // Navy
-        accent: '#34495e', // Slate
-        success: '#27ae60', // Muted Green
+        primary: '#2c3e50',
+        accent: '#34495e',
+        success: '#27ae60',
         background: '#f8f9fa',
         card: '#ffffff',
         border: '#e9ecef',
@@ -205,32 +204,24 @@ export default function VisitorRegistration() {
     const inputStyle = { width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '4px', border: `1px solid ${colors.border}`, backgroundColor: '#fff', fontSize: '15px', color: colors.text, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' };
     const buttonStyle = { width: '100%', padding: '14px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase', letterSpacing: '1px', transition: 'background 0.2s' };
     const secondaryButtonStyle = { ...buttonStyle, backgroundColor: 'transparent', color: colors.subtext, border: `1px solid ${colors.border}` };
-    
-    // Vertical Camera Frame
     const videoConstraints = { width: 480, height: 640, facingMode: "user" };
 
     return (
         <div style={pageStyle}>
             <div style={containerStyle}>
                 
-                {/* HEADER LOGO OR TITLE */}
                 {step !== 3 && (
                     <h1 style={headerStyle}>ViSecure Access</h1>
                 )}
 
-                {/* ERROR / MESSAGE */}
                 {message && <div style={{ padding: '12px', backgroundColor: '#e8f5e9', color: colors.success, fontSize: '14px', marginBottom: '20px', borderLeft: `4px solid ${colors.success}` }}>{message}</div>}
                 {error && <div style={{ padding: '12px', backgroundColor: '#fbeaea', color: '#c0392b', fontSize: '14px', marginBottom: '20px', borderLeft: '4px solid #c0392b' }}>{error}</div>}
 
                 {/* --- STEP 0: MODE SELECT --- */}
                 {step === 0 && (
                     <div>
-                        <button onClick={() => handleModeSelect('RETURNING')} style={buttonStyle}>
-                            Returning Visitor
-                        </button>
-                        <button onClick={() => handleModeSelect('NEW')} style={{...secondaryButtonStyle, marginTop: '15px'}}>
-                            New Registration
-                        </button>
+                        <button onClick={() => handleModeSelect('RETURNING')} style={buttonStyle}>Returning Visitor</button>
+                        <button onClick={() => handleModeSelect('NEW')} style={{...secondaryButtonStyle, marginTop: '15px'}}>New Registration</button>
                     </div>
                 )}
 
@@ -240,10 +231,8 @@ export default function VisitorRegistration() {
                          <div style={{ marginBottom: '20px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '10px' }}>
                             <span style={{ fontSize: '18px', fontWeight: '500', color: colors.primary }}>Visitor Details</span>
                          </div>
-                         
                          <label style={labelStyle}>Full Name</label>
                          <input type="text" name="FullName" value={formData.FullName} onChange={handleChange} required style={inputStyle} />
-                         
                          <div style={{ display: 'flex', gap: '15px' }}>
                             <div style={{ flex: 1 }}>
                                 <label style={labelStyle}>Age</label>
@@ -258,13 +247,10 @@ export default function VisitorRegistration() {
                                 </select>
                             </div>
                          </div>
-
                          <label style={labelStyle}>Purpose of Visit</label>
                          <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} />
-                         
                          <label style={labelStyle}>Host / Department</label>
                          <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
-
                          <button type="submit" style={buttonStyle}>Continue</button>
                          <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Back</button>
                     </form>
@@ -279,7 +265,7 @@ export default function VisitorRegistration() {
                             </span>
                         </div>
 
-                        {(step === 4 || (step === 2 && photos.length < 5)) ? (
+                        {(photos.length < 5) ? (
                             <div style={{ position: 'relative', width: '100%', aspectRatio: '3/4', backgroundColor: '#000', overflow: 'hidden' }}>
                                 <Webcam
                                     audio={false}
@@ -290,17 +276,7 @@ export default function VisitorRegistration() {
                                     mirrored={true}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }}
                                 />
-                                
-                                {/* Minimalist Overlay Frame */}
-                                <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', bottom: '20px', border: `1px solid rgba(255,255,255,0.3)` }}>
-                                    {/* Corners */}
-                                    <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '20px', borderTop: '2px solid white', borderLeft: '2px solid white' }}></div>
-                                    <div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '20px', borderTop: '2px solid white', borderRight: '2px solid white' }}></div>
-                                    <div style={{ position: 'absolute', bottom: 0, left: 0, width: '20px', height: '20px', borderBottom: '2px solid white', borderLeft: '2px solid white' }}></div>
-                                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: '20px', height: '20px', borderBottom: '2px solid white', borderRight: '2px solid white' }}></div>
-                                </div>
-
-                                {/* Status Text */}
+                                <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', bottom: '20px', border: `1px solid rgba(255,255,255,0.3)` }}></div>
                                 <div style={{ position: 'absolute', bottom: '40px', width: '100%', textAlign: 'center' }}>
                                     <span style={{ color: 'white', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '2px' }}>
                                         {!faceDetected ? "Align Face in Frame" : "Processing..."}
@@ -330,13 +306,10 @@ export default function VisitorRegistration() {
                             <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Welcome Back</h2>
                             <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>{formData.FullName}</p>
                         </div>
-
                         <label style={labelStyle}>New Purpose of Visit</label>
                         <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} autoFocus />
-                        
                         <label style={labelStyle}>Host / Department</label>
                         <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
-
                         <button type="submit" style={buttonStyle}>Confirm Entry</button>
                     </form>
                 )}
@@ -344,10 +317,7 @@ export default function VisitorRegistration() {
                 {/* --- STEP 3: DIGITAL PASS --- */}
                 {step === 3 && successData && (
                     <VisitorPass 
-                        visitor={{ 
-                            FullName: successData.name, 
-                            AffiliationType: 'Visitor' // You can customize this if you have the data
-                        }} 
+                        visitor={{ FullName: successData.name, AffiliationType: 'Visitor' }} 
                         visitId={successData.visitId} 
                         onClose={() => window.location.reload()} 
                     />
