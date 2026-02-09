@@ -1,11 +1,9 @@
 # ViSecure: Biometric Visitor Management System
 
-## Latest Features (Feb 8 Update)
-* **Auto-Compression:** Automatically resizes high-res phone photos (10MB → 50KB) to prevent server crashes.
-* **Mobile Optimized:** Fixed "Payload Too Large" errors; works smoothly on 4G/5G mobile data.
-* **Live-Only Security:** Disabled file uploads to force live camera capture (Anti-Spoofing).
-* **Smart AI:** Uses OpenCV LBPH + Haar Cascades for low-light recognition.
-* **Privacy First:** Biometric datasets are local-only (not on GitHub).
+## Latest Features (Feb 9 Update)
+* **Split Name Architecture:** Database now stores `FirstName`, `MiddleInitial`, and `Surname` separately for better analytics.
+* **Smart Folder Structure:** Face datasets now use ID-based naming (`15_Doe_John`) to prevent duplicates and handle identical names.
+* **Smart Camera Loading:** Fixed the "refresh bug" — the camera now automatically waits for the AI model to initialize before scanning.
 
 ## Setup for Developers
 
