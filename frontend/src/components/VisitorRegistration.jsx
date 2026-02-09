@@ -10,8 +10,11 @@ export default function VisitorRegistration() {
     // --- STATE ---
     const [step, setStep] = useState(0); 
     
+    // 1. UPDATED STATE FOR SPLIT NAMES
     const [formData, setFormData] = useState({
-        FullName: '',
+        FirstName: '',
+        MiddleInitial: '',
+        Surname: '',
         Age: '',
         Sex: '',
         PurposeOfVisit: '',
@@ -47,7 +50,8 @@ export default function VisitorRegistration() {
     const handleModeSelect = (mode) => {
         setError('');
         setMessage('');
-        setFormData({ FullName: '', Age: '', Sex: '', PurposeOfVisit: '', PersonToVisit: '' });
+        // 2. UPDATED RESET LOGIC
+        setFormData({ FirstName: '', MiddleInitial: '', Surname: '', Age: '', Sex: '', PurposeOfVisit: '', PersonToVisit: '' });
         setPhotos([]);
         setFaceDetected(false);
         
@@ -70,8 +74,12 @@ export default function VisitorRegistration() {
 
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/check-user`, { photo: compressedPhoto });
             const user = response.data.visitor;
+            
+            // 3. UPDATED: MAP BACKEND DATA TO STATE
             setFormData({
-                FullName: user.FullName,
+                FirstName: user.FirstName,
+                MiddleInitial: user.MiddleInitial || '',
+                Surname: user.Surname,
                 Age: user.Age,
                 Sex: user.Sex,
                 PurposeOfVisit: '', 
@@ -117,21 +125,45 @@ export default function VisitorRegistration() {
     }, [webcamRef, step]);
 
     // --- FACE SEARCH LOOP ---
+    // --- FACE SEARCH LOOP (FIXED) ---
     const startFaceDetection = useCallback(() => {
+        // Prevent multiple intervals
         if (detectionInterval.current) clearInterval(detectionInterval.current);
+        
         detectionInterval.current = setInterval(async () => {
-            if (webcamRef.current?.video?.readyState === 4 && model) {
-                const predictions = await model.estimateFaces(webcamRef.current.video, false);
-                if (predictions.length > 0) {
-                    clearInterval(detectionInterval.current); 
-                    setFaceDetected(true);
-                    setTimeout(() => {
-                        startBurstCapture();
-                    }, 500);
+            // Check 1: Is Camera Ready?
+            if (
+                webcamRef.current &&
+                webcamRef.current.video &&
+                webcamRef.current.video.readyState === 4 &&
+                model // Check 2: Is AI Ready?
+            ) {
+                try {
+                    const predictions = await model.estimateFaces(webcamRef.current.video, false);
+                    if (predictions.length > 0) {
+                        clearInterval(detectionInterval.current); 
+                        setFaceDetected(true);
+                        setTimeout(() => {
+                            startBurstCapture();
+                        }, 500);
+                    }
+                } catch (err) {
+                    console.warn("Face detection oversight:", err);
                 }
             }
         }, 500); 
     }, [model, startBurstCapture]);
+
+    // ⚡ AUTO-START FIX: Trigger detection as soon as Step changes OR Model loads
+    useEffect(() => {
+        if ((step === 2 || step === 4) && model) {
+            startFaceDetection();
+        }
+        // Cleanup on unmount or step change
+        return () => {
+            if (detectionInterval.current) clearInterval(detectionInterval.current);
+        };
+    }, [step, model, startFaceDetection]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -144,10 +176,9 @@ export default function VisitorRegistration() {
         }
 
         try {
-            setMessage('Processing biometric data...'); // Feedback to user
+            setMessage('Processing biometric data...'); 
 
             // ⚡ COMPRESS ALL PHOTOS BEFORE SENDING ⚡
-            // This prevents "Payload Too Large" errors
             let processedPhotos = [];
             if (step === 2) {
                  processedPhotos = await Promise.all(photos.map(p => resizeBase64(p)));
@@ -231,8 +262,43 @@ export default function VisitorRegistration() {
                          <div style={{ marginBottom: '20px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '10px' }}>
                             <span style={{ fontSize: '18px', fontWeight: '500', color: colors.primary }}>Visitor Details</span>
                          </div>
-                         <label style={labelStyle}>Full Name</label>
-                         <input type="text" name="FullName" value={formData.FullName} onChange={handleChange} required style={inputStyle} />
+                         
+                         {/* 4. UPDATED FORM INPUTS: SPLIT NAME */}
+                         <div style={{ display: 'flex', gap: '10px' }}>
+                            <div style={{ flex: 2 }}>
+                                <label style={labelStyle}>First Name</label>
+                                <input 
+                                    type="text" 
+                                    name="FirstName" 
+                                    value={formData.FirstName} 
+                                    onChange={handleChange} 
+                                    required 
+                                    style={inputStyle} 
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>M.I.</label>
+                                <input 
+                                    type="text" 
+                                    name="MiddleInitial" 
+                                    value={formData.MiddleInitial} 
+                                    onChange={handleChange} 
+                                    maxLength={3}
+                                    style={inputStyle} 
+                                />
+                            </div>
+                        </div>
+
+                        <label style={labelStyle}>Surname</label>
+                        <input 
+                            type="text" 
+                            name="Surname" 
+                            value={formData.Surname} 
+                            onChange={handleChange} 
+                            required 
+                            style={inputStyle} 
+                        />
+
                          <div style={{ display: 'flex', gap: '15px' }}>
                             <div style={{ flex: 1 }}>
                                 <label style={labelStyle}>Age</label>
@@ -257,54 +323,61 @@ export default function VisitorRegistration() {
                 )}
 
                 {/* --- STEP 2 & 4: CAMERA --- */}
-                {(step === 2 || step === 4) && (
-                    <div className="fade-in">
-                        <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-                            <span style={{ fontSize: '16px', fontWeight: '500', color: colors.primary }}>
-                                {step === 2 ? "Face Registration" : "Identity Verification"}
-                            </span>
-                        </div>
+                    {(step === 2 || step === 4) && (
+                        <div className="fade-in">
+                            <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+                                <span style={{ fontSize: '16px', fontWeight: '500', color: colors.primary }}>
+                                    {step === 2 ? "Face Registration" : "Identity Verification"}
+                                </span>
+                            </div>
 
-                        {(photos.length < 5) ? (
-                            <div style={{ position: 'relative', width: '100%', aspectRatio: '3/4', backgroundColor: '#000', overflow: 'hidden' }}>
-                                <Webcam
-                                    audio={false}
-                                    ref={webcamRef}
-                                    screenshotFormat="image/jpeg"
-                                    videoConstraints={videoConstraints}
-                                    onUserMedia={startFaceDetection} 
-                                    mirrored={true}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }}
-                                />
-                                <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', bottom: '20px', border: `1px solid rgba(255,255,255,0.3)` }}></div>
-                                <div style={{ position: 'absolute', bottom: '40px', width: '100%', textAlign: 'center' }}>
-                                    <span style={{ color: 'white', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '2px' }}>
-                                        {!faceDetected ? "Align Face in Frame" : "Processing..."}
-                                    </span>
+                            {(photos.length < 5) ? (
+                                <div style={{ position: 'relative', width: '100%', aspectRatio: '3/4', backgroundColor: '#000', overflow: 'hidden' }}>
+                                    {/* 1. WEBCAM BLOCK STARTS HERE */}
+                                    <Webcam
+                                        audio={false}
+                                        ref={webcamRef}
+                                        screenshotFormat="image/jpeg"
+                                        videoConstraints={videoConstraints}
+                                        // ❌ REMOVED: onUserMedia={startFaceDetection} (We use useEffect now)
+                                        mirrored={true}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }}
+                                    />
+                                    
+                                    <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', bottom: '20px', border: `1px solid rgba(255,255,255,0.3)` }}></div>
+                                    
+                                    {/* 2. UPDATED STATUS LABEL */}
+                                    <div style={{ position: 'absolute', bottom: '40px', width: '100%', textAlign: 'center' }}>
+                                        <span style={{ color: 'white', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '2px' }}>
+                                            {!model ? "Initializing AI..." : (!faceDetected ? "Align Face in Frame" : "Processing...")}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                <h3 style={{ margin: '0 0 10px 0', color: colors.primary }}>Scan Complete</h3>
-                                <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>Biometric data captured.</p>
-                            </div>
-                        )}
-
-                        <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-                            <button onClick={handleBack} style={secondaryButtonStyle}>Cancel</button>
-                            {step === 2 && photos.length >= 5 && (
-                                <button onClick={handleSubmit} style={buttonStyle}>Submit Registration</button>
+                            ) : (
+                                <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                                    <h3 style={{ margin: '0 0 10px 0', color: colors.primary }}>Scan Complete</h3>
+                                    <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>Biometric data captured.</p>
+                                </div>
                             )}
+
+                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+                                <button onClick={handleBack} style={secondaryButtonStyle}>Cancel</button>
+                                {step === 2 && photos.length >= 5 && (
+                                    <button onClick={handleSubmit} style={buttonStyle}>Submit Registration</button>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
                 {/* --- STEP 5: UPDATE DETAILS --- */}
                 {step === 5 && (
                     <form onSubmit={handleSubmit}>
                         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                             <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Welcome Back</h2>
-                            <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>{formData.FullName}</p>
+                            {/* 5. UPDATED WELCOME MESSAGE */}
+                            <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>
+                                {formData.FirstName} {formData.Surname}
+                            </p>
                         </div>
                         <label style={labelStyle}>New Purpose of Visit</label>
                         <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} autoFocus />

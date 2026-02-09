@@ -12,15 +12,29 @@ class Visitor extends Model
     // We tell Laravel your primary key is 'VisitorID', not standard 'id'
     protected $primaryKey = 'VisitorID';
 
+    // 1. UPDATE: Replace FullName with new fields
     protected $fillable = [
-        'FacialData',
-        'FullName',
+        'FirstName',
+        'MiddleInitial',
+        'Surname',
+        'FacialData', // Keeping this if you still use it
         'Age',
         'Sex',
         'AffiliationType',
         'ContactNumber',
         'EmailAddress',
     ];
+
+    // 2. MAGIC: Automatically add 'FullName' to JSON responses
+    protected $appends = ['FullName'];
+
+    // 3. LOGIC: Glue the names together when asked
+    public function getFullNameAttribute()
+    {
+        // Example: "Patrick G. Miralion" or "Patrick Miralion"
+        $mi = $this->MiddleInitial ? $this->MiddleInitial . '.' : '';
+        return trim("{$this->FirstName} {$mi} {$this->Surname}");
+    }
 
     // Link to the Visit Logs table
     public function logs()

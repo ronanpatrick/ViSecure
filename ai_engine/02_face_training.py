@@ -2,117 +2,72 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
-import mysql.connector
+import json
 
-# --- DATABASE CONNECTION ---
-# We need this to translate "Patrick G. Miralion" -> ID 6
-def get_db_connection():
-    return mysql.connector.connect(
-        host="127.0.0.1",
-        user="root",
-        password="",
-        database="visecure_db"
-    )
-
-def get_visitor_id_by_name(fullname):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        # Fetch the ID for the given name
-        query = "SELECT VisitorID FROM visitors WHERE FullName = %s"
-        cursor.execute(query, (fullname,))
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return result[0] # Return the ID (e.g., 6)
-    except Exception as e:
-        print(f"[DB Error] {e}")
-    
-    return None
-
-# --- SMART PATHS ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-dataset_path = os.path.join(script_dir, 'dataset')
-trainer_folder = os.path.join(script_dir, 'trainer')
-trainer_file = os.path.join(trainer_folder, 'trainer.yml')
+# Paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+dataset_path = os.path.join(BASE_DIR, 'dataset')
+trainer_path = os.path.join(BASE_DIR, 'trainer.yml')
+names_path = os.path.join(BASE_DIR, 'names.json')
 
 recognizer = cv2.face.LBPHFaceRecognizer_create()
 detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 def getImagesAndLabels(path):
-    if not os.path.exists(path):
-        print(f"\n[CRITICAL ERROR] Could not find dataset folder at: {path}")
-        exit()
-
-    # Get all items in the folder (These are likely User Folders now)
-    items = os.listdir(path)
+    imagePaths = []
     faceSamples = []
     ids = []
+    names = {}
+
+    # Check if dataset exists
+    if not os.path.exists(path):
+        print("ERROR: Dataset folder not found!")
+        return [], [], {}
+
+    # Iterate through all user folders (e.g., "15_Doe_John")
+    for folderName in os.listdir(path):
+        folderPath = os.path.join(path, folderName)
+        
+        # Skip files, only check directories
+        if not os.path.isdir(folderPath):
+            continue
+
+        # EXTRACT ID: "15_Doe_John" -> 15
+        try:
+            # Split by '_' and take the first part
+            id_str = folderName.split('_')[0]
+            id = int(id_str)
+            names[id] = folderName # Map ID 15 to "15_Doe_John"
+        except ValueError:
+            print(f"[WARNING] Skipping folder '{folderName}' - No ID found at start.")
+            continue
+
+        # Get all images in this folder
+        for imageFile in os.listdir(folderPath):
+            if imageFile.endswith(".jpg") or imageFile.endswith(".png"):
+                fullPath = os.path.join(folderPath, imageFile)
+                PIL_img = Image.open(fullPath).convert('L') # Convert to grayscale
+                img_numpy = np.array(PIL_img, 'uint8')
+
+                # Detect face again to be sure
+                faces = detector.detectMultiScale(img_numpy)
+                for (x, y, w, h) in faces:
+                    faceSamples.append(img_numpy[y:y+h, x:x+w])
+                    ids.append(id)
+
+    return faceSamples, ids, names
+
+print("\n[INFO] Training faces. It will take a few seconds. Wait ...")
+faces, ids, names_dict = getImagesAndLabels(dataset_path)
+
+if len(ids) > 0:
+    recognizer.train(faces, np.array(ids))
+    recognizer.write(trainer_path)
     
-    print(f"[INFO] Scanning dataset at: {path}")
+    # Save the ID->Name mapping for the recognizer to use later
+    with open(names_path, 'w') as f:
+        json.dump(names_dict, f)
 
-    valid_count = 0
-
-    for item_name in items:
-        item_path = os.path.join(path, item_name)
-
-        # 1. CHECK IF IT IS A FOLDER (e.g., "Patrick G. Miralion")
-        if os.path.isdir(item_path):
-            folder_name = item_name # This is the Full Name
-            
-            # 2. ASK DATABASE FOR THE ID
-            visitor_id = get_visitor_id_by_name(folder_name)
-            
-            if visitor_id is None:
-                print(f"[SKIP] Could not find DB record for folder: '{folder_name}'")
-                continue
-            
-            print(f"[PROCESSING] User: {folder_name} -> ID: {visitor_id}")
-
-            # 3. PROCESS IMAGES INSIDE THE FOLDER
-            image_files = [f for f in os.listdir(item_path) if f.lower().endswith(('.jpg', '.png'))]
-            
-            for image_file in image_files:
-                image_full_path = os.path.join(item_path, image_file)
-                
-                try:
-                    PIL_img = Image.open(image_full_path).convert('L') # Grayscale
-                    img_numpy = np.array(PIL_img,'uint8')
-                    
-                    faces = detector.detectMultiScale(img_numpy)
-
-                    for (x,y,w,h) in faces:
-                        faceSamples.append(img_numpy[y:y+h,x:x+w])
-                        ids.append(visitor_id)
-                        valid_count += 1
-                        
-                except Exception as e:
-                    print(f"[ERROR] Bad image: {image_file}")
-
-        # 4. SUPPORT OLD FILE FORMAT (User.1.1.jpg) - Just in case
-        elif os.path.isfile(item_path):
-             # (Existing logic for flat files can go here if needed, but we focus on folders now)
-             pass
-
-    return faceSamples, ids, valid_count
-
-print ("\n [INFO] Training faces from Backend Folders...")
-
-faces, ids, count = getImagesAndLabels(dataset_path)
-
-if count == 0:
-    print("\n [ERROR] No faces found!")
-    print(" Tip: Did you register via the Web App? Folders should be in 'ai_engine/dataset'.")
-    exit()
-
-recognizer.train(faces, np.array(ids))
-
-if not os.path.exists(trainer_folder):
-    os.makedirs(trainer_folder)
-
-recognizer.write(trainer_file) 
-
-print(f"\n [SUCCESS] {len(np.unique(ids))} visitors trained.")
-print(f" [INFO] Total images: {count}")
-print(f" [INFO] Model saved to: {trainer_file}")
+    print(f"\n[SUCCESS] {len(np.unique(ids))} faces trained. Exiting Program")
+else:
+    print("\n[ERROR] No faces found to train.")
