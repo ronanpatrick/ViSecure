@@ -1,3 +1,3 @@
 numpy
-opencv-python
-mysql-connector-python
+opencv-contrib-python
+Pillow
