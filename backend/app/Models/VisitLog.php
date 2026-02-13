@@ -12,6 +12,9 @@ class VisitLog extends Model
     // 1. Force it to use the correct table (since you have two migration files)
     protected $table = 'visit_logs'; 
 
+    // 👇 ADD THIS LINE (Assuming your column is named 'LogID')
+    protected $primaryKey = 'LogID';
+
     // 2. Allow these fields to be saved (Crucial!)
     protected $fillable = [
         'VisitorID',

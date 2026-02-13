@@ -1,16 +1,12 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
-import Webcam from 'react-webcam';
-import * as tf from '@tensorflow/tfjs';
-import * as blazeface from '@tensorflow-models/blazeface';
 import VisitorPass from './VisitorPass';
-import { resizeBase64 } from '../utils/imageResizer'; // 👈 IMPORT THE RESIZER
+import FaceScanner from './FaceScanner'; // 👈 IMPORT THE NEW COMPONENT
+import { resizeBase64 } from '../utils/imageResizer';
 
 export default function VisitorRegistration() {
     // --- STATE ---
     const [step, setStep] = useState(0); 
-    
-    // 1. UPDATED STATE FOR SPLIT NAMES
     const [formData, setFormData] = useState({
         FirstName: '',
         MiddleInitial: '',
@@ -19,28 +15,13 @@ export default function VisitorRegistration() {
         Sex: '',
         PurposeOfVisit: '',
         PersonToVisit: '',
+        DepartmentToVisit: '',
     });
     
     const [successData, setSuccessData] = useState(null);
     const [photos, setPhotos] = useState([]); 
-    const [isCapturing, setIsCapturing] = useState(false);
-    const [model, setModel] = useState(null); 
-    const [faceDetected, setFaceDetected] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
-    
-    const webcamRef = useRef(null); 
-    const detectionInterval = useRef(null);
-
-    // --- LOAD AI ---
-    useEffect(() => {
-        const loadModel = async () => {
-            await tf.ready();
-            const loadedModel = await blazeface.load();
-            setModel(loadedModel);
-        };
-        loadModel();
-    }, []);
 
     // --- HANDLERS ---
     const handleChange = (e) => {
@@ -50,10 +31,8 @@ export default function VisitorRegistration() {
     const handleModeSelect = (mode) => {
         setError('');
         setMessage('');
-        // 2. UPDATED RESET LOGIC
-        setFormData({ FirstName: '', MiddleInitial: '', Surname: '', Age: '', Sex: '', PurposeOfVisit: '', PersonToVisit: '' });
+        setFormData({ FirstName: '', MiddleInitial: '', Surname: '', Age: '', Sex: '', PurposeOfVisit: '', PersonToVisit: '', DepartmentToVisit: '' });
         setPhotos([]);
-        setFaceDetected(false);
         
         if (mode === 'NEW') setStep(1); 
         if (mode === 'RETURNING') setStep(4); 
@@ -62,20 +41,26 @@ export default function VisitorRegistration() {
     const handleBack = () => {
         setError('');
         setStep(0); 
-        setFaceDetected(false);
         setPhotos([]);
+    };
+
+    // Called when FaceScanner finishes taking 5 photos
+    const handleScanComplete = (capturedPhotos) => {
+        setPhotos(capturedPhotos);
+        
+        // If we are in "Returning/Login" mode, verify immediately
+        if (step === 4) {
+            handleLoginCheck(capturedPhotos[4]);
+        }
     };
 
     const handleLoginCheck = async (photo) => {
         setMessage('Identifying...');
         try {
-            // ⚡ RESIZE SINGLE PHOTO FOR LOGIN
             const compressedPhoto = await resizeBase64(photo);
-
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/check-user`, { photo: compressedPhoto });
             const user = response.data.visitor;
             
-            // 3. UPDATED: MAP BACKEND DATA TO STATE
             setFormData({
                 FirstName: user.FirstName,
                 MiddleInitial: user.MiddleInitial || '',
@@ -84,6 +69,7 @@ export default function VisitorRegistration() {
                 Sex: user.Sex,
                 PurposeOfVisit: '', 
                 PersonToVisit: '',
+                DepartmentToVisit: '',
             });
             setStep(5); 
             setMessage('');
@@ -91,105 +77,27 @@ export default function VisitorRegistration() {
             console.error(err);
             const debugMsg = err.response?.data?.debug || 'Unknown Error';
             setError(`Login Failed: ${debugMsg}`); 
-            setStep(0);
+            setStep(0); // Go back to start on fail
         }
     };
-
-    // --- STABILIZED BURST CAPTURE ---
-    const startBurstCapture = useCallback(() => {
-        setIsCapturing(true);
-        setPhotos([]); 
-        
-        let count = 0;
-        const tempPhotos = [];
-        const limit = 5; 
-
-        const interval = setInterval(() => {
-            if (webcamRef.current) {
-                const imageSrc = webcamRef.current.getScreenshot();
-                if (imageSrc) {
-                    tempPhotos.push(imageSrc);
-                    count++;
-                }
-            }
-
-            if (count >= limit) {
-                clearInterval(interval);
-                setPhotos(tempPhotos); 
-                setIsCapturing(false);
-                
-                // IF RETURNING VISITOR (Step 4):
-                if (step === 4) handleLoginCheck(tempPhotos[4]);
-            }
-        }, 300); 
-    }, [webcamRef, step]);
-
-    // --- FACE SEARCH LOOP ---
-    // --- FACE SEARCH LOOP (FIXED) ---
-    const startFaceDetection = useCallback(() => {
-        // Prevent multiple intervals
-        if (detectionInterval.current) clearInterval(detectionInterval.current);
-        
-        detectionInterval.current = setInterval(async () => {
-            // Check 1: Is Camera Ready?
-            if (
-                webcamRef.current &&
-                webcamRef.current.video &&
-                webcamRef.current.video.readyState === 4 &&
-                model // Check 2: Is AI Ready?
-            ) {
-                try {
-                    const predictions = await model.estimateFaces(webcamRef.current.video, false);
-                    if (predictions.length > 0) {
-                        clearInterval(detectionInterval.current); 
-                        setFaceDetected(true);
-                        setTimeout(() => {
-                            startBurstCapture();
-                        }, 500);
-                    }
-                } catch (err) {
-                    console.warn("Face detection oversight:", err);
-                }
-            }
-        }, 500); 
-    }, [model, startBurstCapture]);
-
-    // ⚡ AUTO-START FIX: Trigger detection as soon as Step changes OR Model loads
-    useEffect(() => {
-        if ((step === 2 || step === 4) && model) {
-            startFaceDetection();
-        }
-        // Cleanup on unmount or step change
-        return () => {
-            if (detectionInterval.current) clearInterval(detectionInterval.current);
-        };
-    }, [step, model, startFaceDetection]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setMessage('');
         setError('');
 
-        if (step === 2 && photos.length < 5) {
-            setError("Please wait for scan to complete.");
-            return;
-        }
-
         try {
             setMessage('Processing biometric data...'); 
 
-            // ⚡ COMPRESS ALL PHOTOS BEFORE SENDING ⚡
             let processedPhotos = [];
+            // Resize photos only if registering new user
             if (step === 2) {
                  processedPhotos = await Promise.all(photos.map(p => resizeBase64(p)));
             }
 
             const payload = { ...formData, photos: processedPhotos };
-            
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/register`, payload);
             
-            console.log("Full Server Response:", response.data);
-
             const idToSave = response.data.log_id || response.data.visitor_id;
             if (idToSave) localStorage.setItem('active_visit_id', idToSave);
 
@@ -205,18 +113,13 @@ export default function VisitorRegistration() {
             
         } catch (err) {
             console.error(err);
-            setPhotos([]); 
+            setPhotos([]); // Clear photos so they can retry
             const serverMsg = err.response?.data?.message || err.message;
             setError('Registration failed: ' + serverMsg);
-            
-            if (step === 2) {
-                setFaceDetected(false);
-                setTimeout(() => startFaceDetection(), 2000);
-            }
         }
     };
 
-    // --- MINIMALIST STYLES ---
+    // --- STYLES ---
     const colors = {
         primary: '#2c3e50',
         accent: '#34495e',
@@ -235,7 +138,6 @@ export default function VisitorRegistration() {
     const inputStyle = { width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '4px', border: `1px solid ${colors.border}`, backgroundColor: '#fff', fontSize: '15px', color: colors.text, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' };
     const buttonStyle = { width: '100%', padding: '14px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase', letterSpacing: '1px', transition: 'background 0.2s' };
     const secondaryButtonStyle = { ...buttonStyle, backgroundColor: 'transparent', color: colors.subtext, border: `1px solid ${colors.border}` };
-    const videoConstraints = { width: 480, height: 640, facingMode: "user" };
 
     return (
         <div style={pageStyle}>
@@ -263,41 +165,19 @@ export default function VisitorRegistration() {
                             <span style={{ fontSize: '18px', fontWeight: '500', color: colors.primary }}>Visitor Details</span>
                          </div>
                          
-                         {/* 4. UPDATED FORM INPUTS: SPLIT NAME */}
                          <div style={{ display: 'flex', gap: '10px' }}>
                             <div style={{ flex: 2 }}>
                                 <label style={labelStyle}>First Name</label>
-                                <input 
-                                    type="text" 
-                                    name="FirstName" 
-                                    value={formData.FirstName} 
-                                    onChange={handleChange} 
-                                    required 
-                                    style={inputStyle} 
-                                />
+                                <input type="text" name="FirstName" value={formData.FirstName} onChange={handleChange} required style={inputStyle} />
                             </div>
                             <div style={{ flex: 1 }}>
                                 <label style={labelStyle}>M.I.</label>
-                                <input 
-                                    type="text" 
-                                    name="MiddleInitial" 
-                                    value={formData.MiddleInitial} 
-                                    onChange={handleChange} 
-                                    maxLength={3}
-                                    style={inputStyle} 
-                                />
+                                <input type="text" name="MiddleInitial" value={formData.MiddleInitial} onChange={handleChange} maxLength={3} style={inputStyle} />
                             </div>
                         </div>
 
                         <label style={labelStyle}>Surname</label>
-                        <input 
-                            type="text" 
-                            name="Surname" 
-                            value={formData.Surname} 
-                            onChange={handleChange} 
-                            required 
-                            style={inputStyle} 
-                        />
+                        <input type="text" name="Surname" value={formData.Surname} onChange={handleChange} required style={inputStyle} />
 
                          <div style={{ display: 'flex', gap: '15px' }}>
                             <div style={{ flex: 1 }}>
@@ -315,74 +195,94 @@ export default function VisitorRegistration() {
                          </div>
                          <label style={labelStyle}>Purpose of Visit</label>
                          <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} />
-                         <label style={labelStyle}>Host / Department</label>
-                         <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
+                         
+                         <div style={{ display: 'flex', gap: '15px' }}>
+                             <div style={{ flex: 1 }}>
+                                 <label style={labelStyle}>Person to Visit</label>
+                                 <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
+                             </div>
+                             <div style={{ flex: 1 }}>
+                                 <label style={labelStyle}>Department</label>
+                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '46px'}}>
+                                     <option value="">Select...</option>
+                                     <option value="HR">HR</option>
+                                     <option value="IT">IT</option>
+                                     <option value="Finance">Finance</option>
+                                     <option value="Admin">Admin</option>
+                                     <option value="Faculty">Faculty</option>
+                                     <option value="Other">Other</option>
+                                 </select>
+                             </div>
+                         </div>
+
                          <button type="submit" style={buttonStyle}>Continue</button>
                          <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Back</button>
                     </form>
                 )}
 
-                {/* --- STEP 2 & 4: CAMERA --- */}
-                    {(step === 2 || step === 4) && (
-                        <div className="fade-in">
-                            <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-                                <span style={{ fontSize: '16px', fontWeight: '500', color: colors.primary }}>
-                                    {step === 2 ? "Face Registration" : "Identity Verification"}
-                                </span>
-                            </div>
+                {/* --- STEP 2 & 4: CAMERA (REFACTORED) --- */}
+                {(step === 2 || step === 4) && (
+                    <div className="fade-in">
+                        <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+                            <span style={{ fontSize: '16px', fontWeight: '500', color: colors.primary }}>
+                                {step === 2 ? "Face Registration" : "Identity Verification"}
+                            </span>
+                        </div>
 
-                            {(photos.length < 5) ? (
-                                <div style={{ position: 'relative', width: '100%', aspectRatio: '3/4', backgroundColor: '#000', overflow: 'hidden' }}>
-                                    {/* 1. WEBCAM BLOCK STARTS HERE */}
-                                    <Webcam
-                                        audio={false}
-                                        ref={webcamRef}
-                                        screenshotFormat="image/jpeg"
-                                        videoConstraints={videoConstraints}
-                                        // ❌ REMOVED: onUserMedia={startFaceDetection} (We use useEffect now)
-                                        mirrored={true}
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }}
-                                    />
-                                    
-                                    <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', bottom: '20px', border: `1px solid rgba(255,255,255,0.3)` }}></div>
-                                    
-                                    {/* 2. UPDATED STATUS LABEL */}
-                                    <div style={{ position: 'absolute', bottom: '40px', width: '100%', textAlign: 'center' }}>
-                                        <span style={{ color: 'white', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '2px' }}>
-                                            {!model ? "Initializing AI..." : (!faceDetected ? "Align Face in Frame" : "Processing...")}
-                                        </span>
+                        {/* SHOW SCANNER IF PHOTOS NOT TAKEN YET */}
+                        {photos.length < 5 ? (
+                            <FaceScanner 
+                                onScanComplete={handleScanComplete} 
+                                onCancel={handleBack} 
+                            />
+                        ) : (
+                            // SHOW COMPLETE MESSAGE ONCE DONE
+                            <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                                <h3 style={{ margin: '0 0 10px 0', color: colors.primary }}>Scan Complete</h3>
+                                <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>Biometric data captured.</p>
+                                
+                                {step === 2 && (
+                                    <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                        <button onClick={() => setPhotos([])} style={secondaryButtonStyle}>Retake</button>
+                                        <button onClick={handleSubmit} style={buttonStyle}>Submit Registration</button>
                                     </div>
-                                </div>
-                            ) : (
-                                <div style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                    <h3 style={{ margin: '0 0 10px 0', color: colors.primary }}>Scan Complete</h3>
-                                    <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>Biometric data captured.</p>
-                                </div>
-                            )}
-
-                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-                                <button onClick={handleBack} style={secondaryButtonStyle}>Cancel</button>
-                                {step === 2 && photos.length >= 5 && (
-                                    <button onClick={handleSubmit} style={buttonStyle}>Submit Registration</button>
                                 )}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
+                )}
 
                 {/* --- STEP 5: UPDATE DETAILS --- */}
                 {step === 5 && (
                     <form onSubmit={handleSubmit}>
                         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                             <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Welcome Back</h2>
-                            {/* 5. UPDATED WELCOME MESSAGE */}
                             <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>
                                 {formData.FirstName} {formData.Surname}
                             </p>
                         </div>
                         <label style={labelStyle}>New Purpose of Visit</label>
                         <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} autoFocus />
-                        <label style={labelStyle}>Host / Department</label>
-                        <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
+                        
+                        <div style={{ display: 'flex', gap: '15px' }}>
+                             <div style={{ flex: 1 }}>
+                                 <label style={labelStyle}>Person to Visit</label>
+                                 <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
+                             </div>
+                             <div style={{ flex: 1 }}>
+                                 <label style={labelStyle}>Department</label>
+                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '46px'}}>
+                                     <option value="">Select...</option>
+                                     <option value="HR">HR</option>
+                                     <option value="IT">IT</option>
+                                     <option value="Finance">Finance</option>
+                                     <option value="Admin">Admin</option>
+                                     <option value="Faculty">Faculty</option>
+                                     <option value="Other">Other</option>
+                                 </select>
+                             </div>
+                         </div>
+
                         <button type="submit" style={buttonStyle}>Confirm Entry</button>
                     </form>
                 )}

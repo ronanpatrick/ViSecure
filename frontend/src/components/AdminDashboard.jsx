@@ -3,12 +3,10 @@ import { useNavigate } from 'react-router-dom';
 
 // IMPORT YOUR SUB-COMPONENTS
 import VisitorLogs from './VisitorLogs'; 
-import CheckoutScanner from './CheckoutScanner';
 import VisitorMasterList from './VisitorMasterList'; // <--- NEW IMPORT
 
 export default function AdminDashboard() {
     const [currentView, setCurrentView] = useState('RECORDS'); 
-    const [showScanner, setShowScanner] = useState(false);
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -56,7 +54,6 @@ export default function AdminDashboard() {
                     <div className="fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h2 style={{ fontSize: '24px', color: '#1a1c23' }}>📡 Live Traffic Monitoring</h2>
-                            <button onClick={() => setShowScanner(true)} style={actionBtnStyle}>📷 Manual Exit Scan</button>
                         </div>
                         <VisitorLogs />
                     </div>
@@ -66,11 +63,6 @@ export default function AdminDashboard() {
                 {currentView === 'ANALYTICS' && <h2>📊 Analytics & Reports (Coming Soon)</h2>}
                 {currentView === 'ALERTS' && <h2>🚨 Alert Management (Coming Soon)</h2>}
             </div>
-
-            {/* MODAL */}
-            {showScanner && (
-                <CheckoutScanner onClose={() => setShowScanner(false)} onSuccess={() => setShowScanner(false)} />
-            )}
         </div>
     );
 }
@@ -84,4 +76,3 @@ const tabStyle = { padding: '12px 15px', backgroundColor: 'transparent', color: 
 const activeTabStyle = { ...tabStyle, backgroundColor: '#007bff', color: 'white', fontWeight: '600' };
 const logoutBtnStyle = { padding: '12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', marginTop: 'auto', fontWeight: 'bold' };
 const mainContentStyle = { flex: 1, padding: '30px', overflowY: 'auto' };
-const actionBtnStyle = { padding: '10px 20px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' };

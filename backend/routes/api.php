@@ -29,3 +29,5 @@ Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
 Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
 
 Route::get('/live-monitor', [VisitorLogController::class, 'getLiveMonitoring']);
+
+Route::get('/visitors/{id}', [VisitorController::class, 'show']);
