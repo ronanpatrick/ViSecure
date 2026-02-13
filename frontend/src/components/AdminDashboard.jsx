@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// IMPORT YOUR SUB-COMPONENTS
-import VisitorLogs from './VisitorLogs'; 
-import VisitorMasterList from './VisitorMasterList'; // <--- NEW IMPORT
+// ✅ IMPORT YOUR NEW COMPONENTS
+import LiveDashboard from './LiveDashboard';  // The new Command Center
+import VisitorMasterList from './VisitorMasterList'; 
+
+// ❌ DELETED: import VisitorLogs ... (Replaced by LiveDashboard)
+// ❌ DELETED: import CheckoutScanner ... (We removed this feature)
 
 export default function AdminDashboard() {
-    const [currentView, setCurrentView] = useState('RECORDS'); 
+    // Default to 'MONITORING' so you see the cool dashboard first
+    const [currentView, setCurrentView] = useState('MONITORING'); 
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -26,17 +30,14 @@ export default function AdminDashboard() {
                 </div>
 
                 <nav style={navStyle}>
+                    <button onClick={() => setCurrentView('MONITORING')} style={currentView === 'MONITORING' ? activeTabStyle : tabStyle}>
+                        Live Dashboard
+                    </button>
                     <button onClick={() => setCurrentView('RECORDS')} style={currentView === 'RECORDS' ? activeTabStyle : tabStyle}>
                         Visitor Records
                     </button>
-                    <button onClick={() => setCurrentView('MONITORING')} style={currentView === 'MONITORING' ? activeTabStyle : tabStyle}>
-                        Live Monitoring
-                    </button>
                     <button onClick={() => setCurrentView('ANALYTICS')} style={currentView === 'ANALYTICS' ? activeTabStyle : tabStyle}>
                         Analytics & Reports
-                    </button>
-                    <button onClick={() => setCurrentView('ALERTS')} style={currentView === 'ALERTS' ? activeTabStyle : tabStyle}>
-                        Alert Managements
                     </button>
                 </nav>
 
@@ -46,23 +47,16 @@ export default function AdminDashboard() {
             {/* MAIN CONTENT AREA */}
             <div style={mainContentStyle}>
                 
-                {/* VIEW 1: RECORDS (Now handled by its own component!) */}
+                {/* VIEW 1: LIVE DASHBOARD (Command Center) */}
+                {currentView === 'MONITORING' && <LiveDashboard />}
+
+                {/* VIEW 2: RECORDS (Masterlist) */}
                 {currentView === 'RECORDS' && <VisitorMasterList />}
 
-                {/* VIEW 2: MONITORING */}
-                {currentView === 'MONITORING' && (
-                    <div className="fade-in">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h2 style={{ fontSize: '24px', color: '#1a1c23' }}>📡 Live Traffic Monitoring</h2>
-                        </div>
-                        <VisitorLogs />
-                    </div>
-                )}
-
-                {/* VIEW 3 & 4 (Placeholders) */}
+                {/* VIEW 3: ANALYTICS (Placeholder) */}
                 {currentView === 'ANALYTICS' && <h2>📊 Analytics & Reports (Coming Soon)</h2>}
-                {currentView === 'ALERTS' && <h2>🚨 Alert Management (Coming Soon)</h2>}
             </div>
+
         </div>
     );
 }
