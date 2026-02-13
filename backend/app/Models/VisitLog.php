@@ -9,17 +9,25 @@ class VisitLog extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'LogID';
+    // 1. Force it to use the correct table (since you have two migration files)
+    protected $table = 'visit_logs'; 
 
+    // 2. Allow these fields to be saved (Crucial!)
     protected $fillable = [
         'VisitorID',
         'EntryTimestamp',
         'ExitTimestamp',
-        'ExpectedExitTimestamp',
         'PurposeOfVisit',
         'PersonToVisit',
         'DepartmentToVisit',
-        'Status',
         'PrivacyConsentGiven',
+        // Add any other columns you are saving
     ];
+
+    // 3. Link it to the Visitor table
+    public function visitor()
+    {
+        // This connects 'VisitorID' in logs to 'VisitorID' in visitors table
+        return $this->belongsTo(Visitor::class, 'VisitorID', 'VisitorID');
+    }
 }

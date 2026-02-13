@@ -4,18 +4,33 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\VisitorLog;
+use App\Models\VisitLog; // Make sure this matches your Model name (VisitLog vs VisitorLog)
+use Carbon\Carbon;
 
 class VisitorLogController extends Controller
 {
-    public function index()
+    // 1. Get ONLY people currently inside
+    public function getLiveMonitoring()
     {
-        // Fetch logs, newest first
-        $logs = VisitorLog::orderBy('visited_at', 'desc')->get();
-        
+        // "Active" means they have an Entry time but NO Exit time
+        $activeVisits = VisitLog::with('visitor') // Join with Visitor table to get names
+                        ->whereNotNull('EntryTimestamp')
+                        ->whereNull('ExitTimestamp')
+                        ->orderBy('EntryTimestamp', 'desc')
+                        ->get();
+
         return response()->json([
             'success' => true,
-            'data' => $logs
+            'occupancy' => $activeVisits->count(),
+            'capacity' => 100, // You can change this limit later
+            'data' => $activeVisits
         ]);
+    }
+
+    // 2. Keep the history for the "Records" page
+    public function index()
+    {
+        $logs = VisitLog::with('visitor')->orderBy('EntryTimestamp', 'desc')->get();
+        return response()->json(['success' => true, 'data' => $logs]);
     }
 }
