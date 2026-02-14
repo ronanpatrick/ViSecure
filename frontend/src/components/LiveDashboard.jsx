@@ -5,7 +5,7 @@ export default function LiveDashboard() {
     const [visitors, setVisitors] = useState([]);
     const [occupancy, setOccupancy] = useState(0);
     const [capacity] = useState(50); 
-    const [alerts, setAlerts] = useState([]); // 👈 NEW: Live Alerts Feed
+    const [alerts, setAlerts] = useState([]); 
     const [currentTime, setCurrentTime] = useState(new Date());
 
     // 1. POLLING DATA (Visitors + Alerts)
@@ -16,8 +16,7 @@ export default function LiveDashboard() {
                 setVisitors(response.data.data);
                 setOccupancy(response.data.occupancy);
                 
-                // 💡 SIMULATED ALERTS FOR DEMO (Replace with real API later)
-                // In a real app, your backend would send the latest 5 'logs' with status 'Banned' or 'Overstay'
+                // SIMULATED ALERTS
                 const mockAlerts = [
                     { id: 1, type: 'info', msg: 'System Online. Monitoring started.', time: 'Now' },
                     ...response.data.data.map(v => ({
@@ -26,7 +25,7 @@ export default function LiveDashboard() {
                         msg: `${v.visitor?.FullName} entered - ${v.PurposeOfVisit}`, 
                         time: new Date(v.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
                     }))
-                ].slice(0, 10); // Keep last 10 events
+                ].slice(0, 10); 
                 setAlerts(mockAlerts);
             }
         } catch (error) {
@@ -51,7 +50,7 @@ export default function LiveDashboard() {
         }
     };
 
-    // 3. GET DURATION
+    // 3. GET DURATION & TIME
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
@@ -67,25 +66,24 @@ export default function LiveDashboard() {
         return `${hours}h ${minutes}m ${seconds}s`;
     };
 
+    // 🛑 NEW: Check if duration > 4 hours
+    const isOverstay = (entryTime) => {
+        const start = new Date(entryTime);
+        const diffInHours = (currentTime - start) / 1000 / 3600; // Convert ms to hours
+        return diffInHours >= 4; // Returns TRUE if over 4 hours
+        // return diffInHours >= 0.01; // 👈 UNCOMMENT THIS TO TEST (36 seconds limit)
+    };
+
     // --- STYLES ---
     const pageGrid = { display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '20px', height: '80vh' };
-    
-    // LEFT PANEL (MONITOR)
     const mainPanel = { backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflowY: 'auto' };
-    
-    // RIGHT PANEL (ALERTS FEED)
     const sidePanel = { backgroundColor: '#1f2937', borderRadius: '12px', padding: '20px', color: 'white', display: 'flex', flexDirection: 'column' };
-    
-    // COMPONENT STYLES
     const statCard = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '20px', backgroundColor: '#f3f4f6', borderRadius: '8px' };
     const bigNumber = { fontSize: '42px', fontWeight: 'bold', color: occupancy > capacity ? '#ef4444' : '#10b981' };
-    
-    // TABLE
     const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '14px' };
     const thStyle = { textAlign: 'left', padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280' };
     const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6' };
     
-    // ALERT ITEM
     const alertItem = (type) => ({
         padding: '12px',
         marginBottom: '10px',
@@ -105,7 +103,6 @@ export default function LiveDashboard() {
                         <h4 style={{ margin: 0, color: '#6b7280', textTransform: 'uppercase' }}>Building Occupancy</h4>
                         <div style={bigNumber}>{occupancy} <span style={{fontSize: '18px', color: '#9ca3af'}}>/ {capacity}</span></div>
                     </div>
-                    {/* Visual Progress Bar (Simple CSS) */}
                     <div style={{ width: '100px', height: '10px', backgroundColor: '#d1d5db', borderRadius: '5px', overflow: 'hidden' }}>
                         <div style={{ 
                             width: `${(occupancy/capacity)*100}%`, 
@@ -131,19 +128,37 @@ export default function LiveDashboard() {
                         {visitors.length === 0 ? (
                             <tr><td colSpan="5" style={{padding: '20px', textAlign: 'center', color: '#9ca3af'}}>Building is empty.</td></tr>
                         ) : (
-                            visitors.map(log => (
-                                <tr key={log.LogID || log.id}>
-                                    <td style={tdStyle}><strong>{log.visitor?.FullName}</strong></td>
-                                    <td style={tdStyle}><span style={{background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px', fontSize: '11px'}}>{log.DepartmentToVisit || '-'}</span></td>
-                                    <td style={tdStyle}>{new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
-                                    <td style={tdStyle} className="tabular-nums">
-                                        <span style={{color: '#2563eb', fontWeight: 'bold'}}>{getDuration(log.EntryTimestamp)}</span>
-                                    </td>
-                                    <td style={tdStyle}>
-                                        <button onClick={() => handleForceCheckout(log.LogID || log.id)} style={{color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Exit</button>
-                                    </td>
-                                </tr>
-                            ))
+                            visitors.map(log => {
+                                const overstay = isOverstay(log.EntryTimestamp); // Check if over time
+                                return (
+                                    <tr key={log.LogID || log.id} style={{ 
+                                        backgroundColor: overstay ? '#fee2e2' : 'white', // 👈 RED BG IF OVERSTAY
+                                        transition: 'background 0.3s'
+                                    }}>
+                                        <td style={tdStyle}>
+                                            <strong>{log.visitor?.FullName}</strong>
+                                            {overstay && <span style={{ marginLeft: '8px', fontSize: '12px' }}>⚠️</span>}
+                                        </td>
+                                        <td style={tdStyle}><span style={{background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px', fontSize: '11px'}}>{log.DepartmentToVisit || '-'}</span></td>
+                                        <td style={tdStyle}>{new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                                        
+                                        {/* DURATION COLUMN */}
+                                        <td style={tdStyle} className="tabular-nums">
+                                            <span style={{
+                                                color: overstay ? '#b91c1c' : '#2563eb', // Red if overstay, Blue normally
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {getDuration(log.EntryTimestamp)}
+                                            </span>
+                                            {overstay && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold' }}>OVER TIME LIMIT</div>}
+                                        </td>
+
+                                        <td style={tdStyle}>
+                                            <button onClick={() => handleForceCheckout(log.LogID || log.id)} style={{color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold'}}>Exit</button>
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
@@ -161,7 +176,6 @@ export default function LiveDashboard() {
                         </div>
                     ))}
                     
-                    {/* Fake Alert for Visual Demo */}
                     <div style={alertItem('error')}>
                         <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>08:45 AM</div>
                         <div>⚠️ <strong>BANNED USER ATTEMPT</strong><br/>Match: John Doe (ID: 15)</div>
