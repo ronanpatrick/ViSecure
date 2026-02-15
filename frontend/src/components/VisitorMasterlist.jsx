@@ -38,6 +38,7 @@ export default function VisitorMasterList() {
         }
     };
 
+    // 🛑 TOGGLE BAN STATUS
     const toggleBanStatus = async (e, id) => {
         e.stopPropagation(); // Prevent row click when clicking button
         if(!window.confirm("Are you sure you want to change this visitor's status?")) return;
@@ -47,6 +48,33 @@ export default function VisitorMasterList() {
             if(selectedVisitor && selectedVisitor.VisitorID === id) setShowModal(false); // Close modal if open
         } catch (error) {
             alert("Failed to update status.");
+        }
+    };
+
+    // ⚠️ TOGGLE WATCHLIST STATUS (NEW)
+    // ⚠️ TOGGLE WATCHLIST STATUS (With Reason)
+    const toggleWatchlist = async (e, id, currentStatus) => {
+        e.stopPropagation(); 
+        
+        let reason = null;
+
+        // If they are NOT watchlisted yet, ask for a reason
+        if (!currentStatus) {
+            // Simple prompt for now (You can replace this with a Modal later)
+            reason = window.prompt("🚩 FLAGGING VISITOR\n\nEnter reason (e.g., 'Check Bag', 'Suspicious', 'NLP Alert'):", "Random Inspection");
+            if (reason === null) return; // Cancelled
+        } else {
+            if(!window.confirm("Remove this visitor from the watchlist?")) return;
+        }
+
+        try {
+            await axios.put(`${import.meta.env.VITE_API_BASE_URL}/api/admin/visitors/${id}/watchlist`, {
+                reason: reason // Send the reason to backend
+            });
+            fetchVisitors(); 
+        } catch (error) {
+            console.error(error);
+            alert("Failed to update watchlist.");
         }
     };
 
@@ -66,36 +94,23 @@ export default function VisitorMasterList() {
     };
 
     const downloadCSV = () => {
-        // Define all the columns you want in Excel
         const headers = [
-            "Visitor ID", 
-            "Full Name", 
-            "Affiliation", 
-            "Sex", 
-            "Age", 
-            "Current Status", 
-            "Visit Date",       // 👈 New Column
-            "Time In",          // 👈 New Column
-            "Time Out",         // 👈 New Column
-            "Purpose",          // 👈 New Column
-            "Department"        // 👈 New Column
+            "Visitor ID", "Full Name", "Affiliation", "Sex", "Age", "Current Status", 
+            "Visit Date", "Time In", "Time Out", "Purpose", "Department"
         ];
         
         const rows = [];
 
         filteredVisitors.forEach(visitor => {
-            // Check if this visitor has history
             if (visitor.logs && visitor.logs.length > 0) {
-                // LOOP: Create one row for EACH visit
                 visitor.logs.forEach(log => {
                     rows.push([
                         visitor.VisitorID,
-                        `"${visitor.FullName}"`, // Quote names to handle commas
+                        `"${visitor.FullName}"`, 
                         visitor.AffiliationType || "Visitor",
                         visitor.Sex,
                         visitor.Age,
                         visitor.Status,
-                        // --- VISIT DETAILS ---
                         new Date(log.EntryTimestamp).toLocaleDateString(),
                         new Date(log.EntryTimestamp).toLocaleTimeString(),
                         log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString() : "Still Inside",
@@ -104,7 +119,6 @@ export default function VisitorMasterList() {
                     ].join(","));
                 });
             } else {
-                // If they have NO history, still add them (with empty visit columns)
                 rows.push([
                     visitor.VisitorID,
                     `"${visitor.FullName}"`,
@@ -112,7 +126,7 @@ export default function VisitorMasterList() {
                     visitor.Sex,
                     visitor.Age,
                     visitor.Status,
-                    "-", "-", "-", "-", "-" // Empty columns
+                    "-", "-", "-", "-", "-" 
                 ].join(","));
             }
         });
@@ -184,7 +198,11 @@ export default function VisitorMasterList() {
                                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                                 >
                                     <td style={tdStyle}>{visitor.VisitorID}</td>
-                                    <td style={tdStyle}><strong>{visitor.FullName}</strong></td>
+                                    <td style={tdStyle}>
+                                        <strong>{visitor.FullName}</strong>
+                                        {/* Show small warning icon if watchlisted */}
+                                        {visitor.IsWatchlisted ? <span title="Watchlisted"> ⚠️</span> : ''}
+                                    </td>
                                     <td style={tdStyle}>{visitor.AffiliationType || 'Visitor'}</td>
                                     <td style={tdStyle}>{new Date(visitor.created_at).toLocaleDateString()}</td>
                                     <td style={tdStyle}>
@@ -194,6 +212,22 @@ export default function VisitorMasterList() {
                                         }
                                     </td>
                                     <td style={tdStyle}>
+                                        {/* 🔘 NEW: Watchlist Toggle Button */}
+                                        <button 
+                                            // Pass visitor.IsWatchlisted so we know if we are Adding or Removing
+                                            onClick={(e) => toggleWatchlist(e, visitor.VisitorID, visitor.IsWatchlisted)}
+                                            style={{
+                                                ...actionBtnStyle, 
+                                                backgroundColor: visitor.IsWatchlisted ? '#eab308' : '#fbbf24', 
+                                                marginRight: '5px',
+                                                color: 'black'
+                                            }}
+                                            title={visitor.WatchlistReason ? `Reason: ${visitor.WatchlistReason}` : "Toggle Watchlist"}
+                                        >
+                                            {visitor.IsWatchlisted ? '⚠️ Unflag' : '⚠️ Flag'}
+                                        </button>
+
+                                        {/* Existing Ban Button */}
                                         <button 
                                             onClick={(e) => toggleBanStatus(e, visitor.VisitorID)}
                                             style={{...actionBtnStyle, backgroundColor: visitor.Status === 'Banned' ? '#6b7280' : '#ef4444'}}
@@ -218,7 +252,10 @@ export default function VisitorMasterList() {
                             <div style={{ display: 'flex', gap: '30px' }}>
                                 {/* LEFT: PROFILE INFO */}
                                 <div style={{ flex: 1, borderRight: '1px solid #e5e7eb', paddingRight: '20px' }}>
-                                    <h2 style={{ marginTop: 0, color: '#111827' }}>{selectedVisitor.FullName}</h2>
+                                    <h2 style={{ marginTop: 0, color: '#111827' }}>
+                                        {selectedVisitor.FullName}
+                                        {selectedVisitor.IsWatchlisted ? <span style={{fontSize: '0.6em', color: '#eab308'}}> (⚠️ Watchlisted)</span> : ''}
+                                    </h2>
                                     <p style={{ color: '#6b7280', fontSize: '14px' }}>Visitor ID: #{selectedVisitor.VisitorID}</p>
                                     
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>

@@ -44,6 +44,10 @@ class VisitorController extends Controller
                     'status' => 'BANNED'
                 ], 403); // 403 Forbidden
             }
+
+            // 2. ⚠️ WATCHLIST CHECK (New)
+            // We do NOT stop them, but we add a warning flag to the response
+            $isWatchlisted = $visitor->IsWatchlisted;
         }
 
         if (!$visitor) {
@@ -109,6 +113,8 @@ class VisitorController extends Controller
             'message' => $isNewUser ? 'Registration Complete!' : 'Welcome back!',
             'visitor_name' => $visitor->FullName,
             'status' => $isNewUser ? 'TRAINED' : 'RETURNING',
+            // 👇 Send the warning to the frontend!
+            'watchlist_warning' => $visitor->IsWatchlisted ?? false, 
             'visitor_id' => $visitor->VisitorID,
             'log_id' => $log->id 
         ], 201);
@@ -168,5 +174,31 @@ class VisitorController extends Controller
         }
 
         return response()->json($visitor);
+    }
+
+    // Toggle Watchlist Status
+    public function toggleWatchlist(Request $request, $id)
+    {
+        $visitor = Visitor::find($id);
+        if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);
+
+        // Toggle Logic
+        if ($visitor->IsWatchlisted) {
+            // If already watchlisted, remove it
+            $visitor->IsWatchlisted = false;
+            $visitor->WatchlistReason = null; // Clear the reason
+        } else {
+            // If not watchlisted, add it AND the reason
+            $visitor->IsWatchlisted = true;
+            $visitor->WatchlistReason = $request->input('reason', 'General Suspicion'); // Default if empty
+        }
+        
+        $visitor->save();
+
+        return response()->json([
+            'message' => $visitor->IsWatchlisted ? 'Added to Watchlist' : 'Removed from Watchlist',
+            'state' => $visitor->IsWatchlisted,
+            'reason' => $visitor->WatchlistReason
+        ]);
     }
 }

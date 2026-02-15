@@ -16,17 +16,26 @@ export default function LiveDashboard() {
                 setVisitors(response.data.data);
                 setOccupancy(response.data.occupancy);
                 
-                // SIMULATED ALERTS
-                const mockAlerts = [
-                    { id: 1, type: 'info', msg: 'System Online. Monitoring started.', time: 'Now' },
-                    ...response.data.data.map(v => ({
+                // 💡 UPDATED ALERTS LOGIC (Now includes Reason)
+                const newAlerts = response.data.data.map(v => {
+                    const isWatchlisted = v.visitor?.IsWatchlisted === 1 || v.visitor?.IsWatchlisted === true; 
+
+                    return {
                         id: v.LogID, 
-                        type: 'success', 
-                        msg: `${v.visitor?.FullName} entered - ${v.PurposeOfVisit}`, 
+                        type: isWatchlisted ? 'warning' : 'success', 
+                        msg: isWatchlisted 
+                            ? `⚠️ WATCHLIST ALERT: ${v.visitor?.FullName}. Reason: ${v.visitor?.WatchlistReason || 'Check ID/Bag'}` 
+                            : `${v.visitor?.FullName} entered - ${v.PurposeOfVisit}`, 
                         time: new Date(v.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-                    }))
+                    };
+                });
+
+                const combinedAlerts = [
+                    { id: 'sys-1', type: 'info', msg: 'System Online. Monitoring started.', time: 'Now' },
+                    ...newAlerts
                 ].slice(0, 10); 
-                setAlerts(mockAlerts);
+
+                setAlerts(combinedAlerts);
             }
         } catch (error) {
             console.error("Dashboard error:", error);
@@ -66,12 +75,19 @@ export default function LiveDashboard() {
         return `${hours}h ${minutes}m ${seconds}s`;
     };
 
-    // 🛑 NEW: Check if duration > 4 hours
-    const isOverstay = (entryTime) => {
+    // 🛑 GRADUATED OVERSTAY LOGIC (New)
+    // 0 = Normal, 1 = Warning (>4h), 2 = Critical (>5h)
+    const getOverstayLevel = (entryTime) => {
         const start = new Date(entryTime);
-        const diffInHours = (currentTime - start) / 1000 / 3600; // Convert ms to hours
-        return diffInHours >= 4; // Returns TRUE if over 4 hours
-        // return diffInHours >= 0.01; // 👈 UNCOMMENT THIS TO TEST (36 seconds limit)
+        const diffInHours = (currentTime - start) / 1000 / 3600; 
+        
+        if (diffInHours >= 5) return 2; // 🚨 CRITICAL
+        if (diffInHours >= 4) return 1; // ⚠️ WARNING
+        return 0; // ✅ NORMAL
+
+        // 🧪 UNCOMMENT TO TEST FAST:
+        // if (diffInHours >= 0.02) return 2; // > ~70 seconds (Red)
+        // if (diffInHours >= 0.01) return 1; // > ~35 seconds (Yellow)
     };
 
     // --- STYLES ---
@@ -84,13 +100,16 @@ export default function LiveDashboard() {
     const thStyle = { textAlign: 'left', padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280' };
     const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6' };
     
+    // 🎨 ALERT STYLES
     const alertItem = (type) => ({
         padding: '12px',
         marginBottom: '10px',
         borderRadius: '6px',
         fontSize: '13px',
-        backgroundColor: type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-        borderLeft: type === 'error' ? '4px solid #ef4444' : '4px solid #10b981'
+        backgroundColor: type === 'error' ? 'rgba(239, 68, 68, 0.2)' : 
+                        type === 'warning' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+        borderLeft: type === 'error' ? '4px solid #ef4444' : 
+                   type === 'warning' ? '4px solid #eab308' : '4px solid #10b981'
     });
 
     return (
@@ -129,28 +148,42 @@ export default function LiveDashboard() {
                             <tr><td colSpan="5" style={{padding: '20px', textAlign: 'center', color: '#9ca3af'}}>Building is empty.</td></tr>
                         ) : (
                             visitors.map(log => {
-                                const overstay = isOverstay(log.EntryTimestamp); // Check if over time
+                                // Calculate Level (0, 1, or 2)
+                                const level = getOverstayLevel(log.EntryTimestamp);
+                                
+                                // Determine Background Color
+                                let rowBg = 'white';
+                                if(level === 1) rowBg = '#fef9c3'; // Yellow (Warning)
+                                if(level === 2) rowBg = '#fee2e2'; // Red (Critical)
+
                                 return (
                                     <tr key={log.LogID || log.id} style={{ 
-                                        backgroundColor: overstay ? '#fee2e2' : 'white', // 👈 RED BG IF OVERSTAY
+                                        backgroundColor: rowBg, 
                                         transition: 'background 0.3s'
                                     }}>
                                         <td style={tdStyle}>
                                             <strong>{log.visitor?.FullName}</strong>
-                                            {overstay && <span style={{ marginLeft: '8px', fontSize: '12px' }}>⚠️</span>}
+                                            
+                                            {/* Show Watchlist Reason */}
+                                            {log.visitor?.IsWatchlisted && (
+                                                <div style={{fontSize: '11px', color: '#b45309', marginTop: '2px'}}>
+                                                    ⚠️ {log.visitor?.WatchlistReason || "Check ID"}
+                                                </div>
+                                            )}
                                         </td>
                                         <td style={tdStyle}><span style={{background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px', fontSize: '11px'}}>{log.DepartmentToVisit || '-'}</span></td>
                                         <td style={tdStyle}>{new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
                                         
-                                        {/* DURATION COLUMN */}
+                                        {/* DURATION COLUMN - Changes based on Level */}
                                         <td style={tdStyle} className="tabular-nums">
                                             <span style={{
-                                                color: overstay ? '#b91c1c' : '#2563eb', // Red if overstay, Blue normally
+                                                color: level === 2 ? '#b91c1c' : level === 1 ? '#b45309' : '#2563eb', 
                                                 fontWeight: 'bold'
                                             }}>
                                                 {getDuration(log.EntryTimestamp)}
                                             </span>
-                                            {overstay && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold' }}>OVER TIME LIMIT</div>}
+                                            {level === 2 && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold' }}>CRITICAL OVERSTAY</div>}
+                                            {level === 1 && <div style={{ fontSize: '10px', color: '#b45309', fontWeight: 'bold' }}>OVER TIME LIMIT</div>}
                                         </td>
 
                                         <td style={tdStyle}>
@@ -176,6 +209,7 @@ export default function LiveDashboard() {
                         </div>
                     ))}
                     
+                    {/* Demo Alert */}
                     <div style={alertItem('error')}>
                         <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>08:45 AM</div>
                         <div>⚠️ <strong>BANNED USER ATTEMPT</strong><br/>Match: John Doe (ID: 15)</div>
