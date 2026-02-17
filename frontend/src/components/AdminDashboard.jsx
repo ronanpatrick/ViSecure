@@ -4,9 +4,7 @@ import { useNavigate } from 'react-router-dom';
 // ✅ IMPORT YOUR NEW COMPONENTS
 import LiveDashboard from './LiveDashboard';  // The new Command Center
 import VisitorMasterList from './VisitorMasterList'; 
-
-// ❌ DELETED: import VisitorLogs ... (Replaced by LiveDashboard)
-// ❌ DELETED: import CheckoutScanner ... (We removed this feature)
+import AnalyticsDashboard from './AnalyticsDashboard'; // 👈 This is imported, now let's use it!
 
 export default function AdminDashboard() {
     // Default to 'MONITORING' so you see the cool dashboard first
@@ -53,8 +51,8 @@ export default function AdminDashboard() {
                 {/* VIEW 2: RECORDS (Masterlist) */}
                 {currentView === 'RECORDS' && <VisitorMasterList />}
 
-                {/* VIEW 3: ANALYTICS (Placeholder) */}
-                {currentView === 'ANALYTICS' && <h2>📊 Analytics & Reports (Coming Soon)</h2>}
+                {/* VIEW 3: ANALYTICS (The Fix!) */}
+                {currentView === 'ANALYTICS' && <AnalyticsDashboard />} 
             </div>
 
         </div>

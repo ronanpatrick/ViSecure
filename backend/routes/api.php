@@ -33,3 +33,5 @@ Route::get('/live-monitor', [VisitorLogController::class, 'getLiveMonitoring']);
 Route::get('/visitors/{id}', [VisitorController::class, 'show']);
 
 Route::put('/admin/visitors/{id}/watchlist', [VisitorController::class, 'toggleWatchlist']);
+
+Route::get('/analytics', [VisitorController::class, 'getAnalytics']);

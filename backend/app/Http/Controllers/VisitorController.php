@@ -2,20 +2,70 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
 use App\Models\Visitor;
 use App\Models\VisitLog;
-use Illuminate\Http\Request;
-use App\Services\AIService; // 👈 Import the new Service
+use App\Services\AIService;
+use Carbon\Carbon;               // 👈 ADDED: Needed for date math
+use Illuminate\Support\Facades\DB; // 👈 ADDED: Needed for database counting
 
 class VisitorController extends Controller
 {
     protected $aiService;
 
-    // Inject the Service automatically
     public function __construct(AIService $aiService)
     {
         $this->aiService = $aiService;
     }
+
+    // ------------------------------------------------------------------
+    // 📊 NEW: ANALYTICS ENDPOINT (The Missing Piece)
+    // ------------------------------------------------------------------
+    public function getAnalytics()
+    {
+        try {
+            $today = Carbon::today();
+
+            // 1. HEADLINE STATS
+            $totalVisitors = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->count();
+            $activeVisitors = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->whereNull('ExitTimestamp')->count();
+            $bannedAttempts = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->where('PurposeOfVisit', 'LIKE', '%Banned%')->count();
+
+            // 2. PEAK HOURS
+            $peakHours = DB::table('visit_logs')
+                ->select(DB::raw('HOUR(EntryTimestamp) as hour'), DB::raw('count(*) as count'))
+                ->whereDate('EntryTimestamp', $today)
+                ->groupBy(DB::raw('HOUR(EntryTimestamp)'))
+                ->orderBy(DB::raw('HOUR(EntryTimestamp)'))
+                ->get();
+
+            // 3. DEPARTMENT TRAFFIC
+            $departments = DB::table('visit_logs')
+                ->select('DepartmentToVisit', DB::raw('count(*) as count'))
+                ->whereDate('EntryTimestamp', $today)
+                ->groupBy('DepartmentToVisit')
+                ->orderByDesc('count')
+                ->limit(5)
+                ->get();
+
+            return response()->json([
+                'summary' => [
+                    'total' => $totalVisitors,
+                    'active' => $activeVisitors,
+                    'banned' => $bannedAttempts
+                ],
+                'peak_hours' => $peakHours,
+                'departments' => $departments
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // EXISTING FUNCTIONS (Store, CheckUser, etc.)
+    // ------------------------------------------------------------------
 
     public function store(Request $request)
     {
@@ -37,17 +87,12 @@ class VisitorController extends Controller
 
         if ($visitor) {
             // 🛑 SECURITY CHECK: IS BANNED?
-            // This runs for Returning Visitors found by name
             if ($visitor->Status === 'Banned') {
                 return response()->json([
-                    'message' => 'ACCESS DENIED: This individual is BANNED from the premises.',
+                    'message' => 'ACCESS DENIED: This individual is BANNED.',
                     'status' => 'BANNED'
-                ], 403); // 403 Forbidden
+                ], 403);
             }
-
-            // 2. ⚠️ WATCHLIST CHECK (New)
-            // We do NOT stop them, but we add a warning flag to the response
-            $isWatchlisted = $visitor->IsWatchlisted;
         }
 
         if (!$visitor) {
@@ -63,15 +108,12 @@ class VisitorController extends Controller
                 
                 if ($duplicateID) {
                     $dupUser = Visitor::find($duplicateID);
-                    
-                    // 🛑 SECURITY CHECK: IS THE DUPLICATE FACE BANNED?
                     if ($dupUser && $dupUser->Status === 'Banned') {
                         return response()->json([
-                             'message' => 'ACCESS DENIED: This face matches a BANNED individual.',
+                             'message' => 'ACCESS DENIED: Face matches BANNED individual.',
                              'status' => 'BANNED'
                         ], 403);
                     }
-
                     return response()->json([
                         'message' => "Face already registered as '{$dupUser->FullName}'."
                     ], 422);
@@ -94,7 +136,7 @@ class VisitorController extends Controller
                 $success = $this->aiService->validateAndTrain($visitor, $request->photos);
                 if (!$success) {
                     $visitor->delete();
-                    return response()->json(['message' => 'No face detected in photos. Check lighting.'], 422);
+                    return response()->json(['message' => 'No face detected.'], 422);
                 }
             }
         } 
@@ -104,17 +146,18 @@ class VisitorController extends Controller
             'VisitorID' => $visitor->VisitorID,
             'EntryTimestamp' => now(),
             'PurposeOfVisit' => $validated['PurposeOfVisit'],
-            'PersonToVisit' => $request->PersonToVisit,
-            'DepartmentToVisit' => $request->DepartmentToVisit ?? null,
+            'PersonToVisit' => $request->PersonToVisit ?? null,
+            'DepartmentToVisit' => $request->DepartmentToVisit ?? 'General',
             'PrivacyConsentGiven' => true,
+            'Status' => 'Active'
         ]);
 
         return response()->json([
             'message' => $isNewUser ? 'Registration Complete!' : 'Welcome back!',
             'visitor_name' => $visitor->FullName,
             'status' => $isNewUser ? 'TRAINED' : 'RETURNING',
-            // 👇 Send the warning to the frontend!
             'watchlist_warning' => $visitor->IsWatchlisted ?? false, 
+            'watchlist_reason' => $visitor->WatchlistReason ?? null,
             'visitor_id' => $visitor->VisitorID,
             'log_id' => $log->id 
         ], 201);
@@ -123,8 +166,6 @@ class VisitorController extends Controller
     public function checkUser(Request $request)
     {
         $request->validate(['photo' => 'required|string']);
-
-        // 🛑 AI ACTION: Recognize
         $result = $this->aiService->recognizeUser($request->photo);
 
         if ($result['status'] === 'FOUND') {
@@ -133,17 +174,11 @@ class VisitorController extends Controller
                 return response()->json(['status' => 'FOUND', 'visitor' => $visitor]);
             }
         }
-
-        return response()->json([
-            'status' => 'NOT_FOUND', 
-            'debug' => $result['msg'] ?? 'Unknown Error'
-        ], 404);
+        return response()->json(['status' => 'NOT_FOUND', 'debug' => $result['msg'] ?? 'Unknown Error'], 404);
     }
 
-    // ... (Keep index, getAllVisitors, checkout, toggleStatus as they were) ...
     public function getAllVisitors()
     {
-        // ⚡ UPDATED: Add 'with('logs')' to get the history automatically
         return response()->json(Visitor::with('logs')->orderBy('created_at', 'desc')->get());
     }
     
@@ -161,38 +196,27 @@ class VisitorController extends Controller
         return response()->json(['message' => 'Status updated']);
     }
 
-    // Get single visitor with their history
     public function show($id)
     {
-        // "with('logs')" uses the relationship we defined in the Model
         $visitor = Visitor::with(['logs' => function($query) {
-            $query->orderBy('EntryTimestamp', 'desc'); // Newest visits first
+            $query->orderBy('EntryTimestamp', 'desc');
         }])->find($id);
-
-        if (!$visitor) {
-            return response()->json(['message' => 'Visitor not found'], 404);
-        }
-
+        if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);
         return response()->json($visitor);
     }
 
-    // Toggle Watchlist Status
     public function toggleWatchlist(Request $request, $id)
     {
         $visitor = Visitor::find($id);
         if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);
 
-        // Toggle Logic
         if ($visitor->IsWatchlisted) {
-            // If already watchlisted, remove it
             $visitor->IsWatchlisted = false;
-            $visitor->WatchlistReason = null; // Clear the reason
+            $visitor->WatchlistReason = null;
         } else {
-            // If not watchlisted, add it AND the reason
             $visitor->IsWatchlisted = true;
-            $visitor->WatchlistReason = $request->input('reason', 'General Suspicion'); // Default if empty
+            $visitor->WatchlistReason = $request->input('reason', 'General Suspicion');
         }
-        
         $visitor->save();
 
         return response()->json([
