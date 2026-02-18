@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\VisitorController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\API\VisitorLogController;
+use App\Http\Controllers\MonitorController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -28,10 +29,11 @@ Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
 // Route to Toggle Status (Ban/Unban)
 Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
 
-Route::get('/live-monitor', [VisitorLogController::class, 'getLiveMonitoring']);
-
 Route::get('/visitors/{id}', [VisitorController::class, 'show']);
 
 Route::put('/admin/visitors/{id}/watchlist', [VisitorController::class, 'toggleWatchlist']);
 
 Route::get('/analytics', [VisitorController::class, 'getAnalytics']);
+
+Route::get('/live-monitor', [MonitorController::class, 'getLiveStats']);
+

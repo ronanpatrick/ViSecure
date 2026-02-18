@@ -3,22 +3,39 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\VisitLog;
+use Carbon\Carbon;
 
 class MonitorController extends Controller
 {
-    public function index()
+    public function getLiveStats()
     {
-        // 1. Fetch the logs from the database
-        // We join 'visit_logs' with 'visitors' to get the names
-        $logs = DB::table('visit_logs')
-            ->join('visitors', 'visit_logs.VisitorID', '=', 'visitors.VisitorID')
-            ->select('visit_logs.*', 'visitors.FullName', 'visitors.VisitorID')
-            ->orderBy('visit_logs.EntryTimestamp', 'desc')
-            ->limit(20) // Get the last 20 entries
-            ->get();
+        try {
+            $today = Carbon::today();
 
-        // 2. Send the data to the view (page)
-        return view('monitor', ['logs' => $logs]);
+            // 1. ACTIVE VISITORS (Currently Inside)
+            // We fetch the visitor details AND the log details (PurposeOfVisit is in the log)
+            $activeVisitors = VisitLog::with('visitor')
+                ->whereNull('ExitTimestamp')
+                ->whereDate('EntryTimestamp', $today)
+                ->orderBy('EntryTimestamp', 'desc')
+                ->get();
+
+            // 2. OCCUPANCY COUNT
+            $occupancy = $activeVisitors->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => $activeVisitors,
+                'occupancy' => $occupancy
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Server Error',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

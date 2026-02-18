@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 export default function VisitorMasterList() {
     const [visitors, setVisitors] = useState([]);
@@ -141,6 +143,51 @@ export default function VisitorMasterList() {
         document.body.removeChild(link);
     };
 
+    const downloadPDF = () => {
+        const doc = new jsPDF();
+
+        // 1. Title & Branding
+        doc.setFontSize(18);
+        doc.text("ViSecure - Visitor Audit Report", 14, 22);
+        
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+
+        // 2. Define Table Columns
+        const tableColumn = ["ID", "Name", "Type", "Time In", "Time Out", "Department", "Status"];
+        const tableRows = [];
+
+        // 3. Map Data to Rows
+        filteredVisitors.forEach(visitor => {
+            const logs = visitor.logs && visitor.logs.length > 0 ? visitor.logs : [{}];
+            logs.forEach(log => {
+                const visitorData = [
+                    visitor.VisitorID,
+                    visitor.FullName,
+                    visitor.AffiliationType,
+                    log.EntryTimestamp ? new Date(log.EntryTimestamp).toLocaleTimeString() : '-',
+                    log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString() : 'Active',
+                    log.DepartmentToVisit || '-',
+                    visitor.Status
+                ];
+                tableRows.push(visitorData);
+            });
+        });
+
+        // 4. Generate Table
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 40,
+            theme: 'grid',
+            headStyles: { fillColor: [22, 160, 133] }, // Professional Green
+        });
+
+        // 5. Save
+        doc.save(`visecure_report_${Date.now()}.pdf`);
+    };
+
     // --- STYLES ---
     const topBarStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
     const searchInputStyle = { padding: '10px', width: '300px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px' };
@@ -171,7 +218,8 @@ export default function VisitorMasterList() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         style={searchInputStyle}
                     />
-                    <button onClick={downloadCSV} style={exportBtnStyle}>📥 Export CSV</button>
+                    <button onClick={downloadCSV} style={exportBtnStyle}>📥 CSV</button>
+                    <button onClick={downloadPDF} style={{...exportBtnStyle, backgroundColor: '#b91c1c', marginLeft: '10px'}}>📄 PDF</button>
                 </div>
             </div>
             

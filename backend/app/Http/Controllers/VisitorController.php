@@ -6,8 +6,8 @@ use Illuminate\Http\Request;
 use App\Models\Visitor;
 use App\Models\VisitLog;
 use App\Services\AIService;
-use Carbon\Carbon;               // 👈 ADDED: Needed for date math
-use Illuminate\Support\Facades\DB; // 👈 ADDED: Needed for database counting
+use Carbon\Carbon;             
+use Illuminate\Support\Facades\DB;
 
 class VisitorController extends Controller
 {
@@ -19,52 +19,160 @@ class VisitorController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // 📊 NEW: ANALYTICS ENDPOINT (The Missing Piece)
+    // 📊 ANALYTICS ENDPOINT (Updated to use Python AI Engine)
     // ------------------------------------------------------------------
-    public function getAnalytics()
+    public function getAnalytics(Request $request)
     {
         try {
-            $today = Carbon::today();
+            // 1. DETERMINE DATE FILTER
+            $period = $request->query('period', 'today'); 
+            $now = Carbon::now();
+            $startDate = null; // If null, means "All Time"
 
-            // 1. HEADLINE STATS
-            $totalVisitors = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->count();
-            $activeVisitors = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->whereNull('ExitTimestamp')->count();
-            $bannedAttempts = DB::table('visit_logs')->whereDate('EntryTimestamp', $today)->where('PurposeOfVisit', 'LIKE', '%Banned%')->count();
+            // Set the start date based on the selected period
+            switch ($period) {
+                case 'today':      $startDate = $now->copy()->startOfDay(); break;
+                case 'yesterday':  $startDate = $now->copy()->subDay()->startOfDay(); break; 
+                case '7_days':     $startDate = $now->copy()->subDays(7); break;
+                case '30_days':    $startDate = $now->copy()->subDays(30); break;
+                case '3_months':   $startDate = $now->copy()->subMonths(3); break;
+                case '6_months':   $startDate = $now->copy()->subMonths(6); break;
+                case '1_year':     $startDate = $now->copy()->subYear(); break;
+                case 'all_time':   $startDate = null; break;
+                default:           $startDate = $now->copy()->startOfDay();
+            }
 
-            // 2. PEAK HOURS
-            $peakHours = DB::table('visit_logs')
-                ->select(DB::raw('HOUR(EntryTimestamp) as hour'), DB::raw('count(*) as count'))
-                ->whereDate('EntryTimestamp', $today)
+            // HELPER: Function to apply date filter to any query
+            $applyDate = function($query, $column = 'EntryTimestamp') use ($period, $startDate) {
+                if ($period === 'all_time') return;
+                
+                if ($period === 'today') {
+                    $query->whereDate($column, Carbon::today());
+                } elseif ($period === 'yesterday') {
+                    $query->whereDate($column, Carbon::yesterday());
+                } else {
+                    $query->where($column, '>=', $startDate);
+                }
+            };
+
+            // 2. HEADLINE STATS
+            $totalQuery = DB::table('visit_logs');
+            $applyDate($totalQuery);
+            $totalVisits = $totalQuery->count();
+
+            // "Active" is ALWAYS "Right now", regardless of history filter
+            $activeVisitors = DB::table('visit_logs')->whereNull('ExitTimestamp')->count();
+
+            $bannedQuery = DB::table('visit_logs')
+                ->join('visitors', 'visit_logs.VisitorID', '=', 'visitors.VisitorID')
+                ->where('visitors.IsWatchlisted', true);
+            $applyDate($bannedQuery, 'visit_logs.EntryTimestamp');
+            $bannedAttempts = $bannedQuery->count();
+
+            // 3. PEAK HOURS (Hourly Distribution)
+            $peakQuery = DB::table('visit_logs')
+                ->select(DB::raw('HOUR(EntryTimestamp) as hour'), DB::raw('count(*) as count'));
+            $applyDate($peakQuery);
+            $peakHours = $peakQuery
                 ->groupBy(DB::raw('HOUR(EntryTimestamp)'))
                 ->orderBy(DB::raw('HOUR(EntryTimestamp)'))
                 ->get();
 
-            // 3. DEPARTMENT TRAFFIC
-            $departments = DB::table('visit_logs')
-                ->select('DepartmentToVisit', DB::raw('count(*) as count'))
-                ->whereDate('EntryTimestamp', $today)
+            // 4. TOP DEPARTMENTS
+            $deptQuery = DB::table('visit_logs')
+                ->select('DepartmentToVisit', DB::raw('count(*) as count'));
+            $applyDate($deptQuery);
+            $departments = $deptQuery
                 ->groupBy('DepartmentToVisit')
                 ->orderByDesc('count')
                 ->limit(5)
                 ->get();
 
+            // 5. DEMOGRAPHICS (Sex)
+            $sexQuery = DB::table('visitors')
+                ->join('visit_logs', 'visitors.VisitorID', '=', 'visit_logs.VisitorID')
+                ->select('visitors.Sex', DB::raw('count(DISTINCT visitors.VisitorID) as count')); 
+            $applyDate($sexQuery, 'visit_logs.EntryTimestamp');
+            $sexDistribution = $sexQuery->groupBy('visitors.Sex')->get();
+
+            // 6. DEMOGRAPHICS (Age)
+            $ageQuery = DB::table('visitors')
+                ->join('visit_logs', 'visitors.VisitorID', '=', 'visit_logs.VisitorID')
+                ->select(DB::raw("
+                    CASE 
+                        WHEN visitors.Age < 18 THEN 'Under 18'
+                        WHEN visitors.Age BETWEEN 18 AND 30 THEN '18-30'
+                        WHEN visitors.Age BETWEEN 31 AND 50 THEN '31-50'
+                        ELSE '50+' 
+                    END as age_range
+                "), DB::raw('count(DISTINCT visitors.VisitorID) as count'));
+            $applyDate($ageQuery, 'visit_logs.EntryTimestamp');
+            $ageGroups = $ageQuery->groupBy('age_range')->get();
+
+            // ---------------------------------------------------------
+            // 🕵️‍♂️ 7. SUSPICIOUS ACTIVITY (UPDATED: Now uses Python NLP)
+            // ---------------------------------------------------------
+            
+            // A. Fetch the last 50 visits (We audit them in real-time)
+            $recentLogs = DB::table('visit_logs')
+                ->join('visitors', 'visit_logs.VisitorID', '=', 'visitors.VisitorID')
+                ->select(
+                    DB::raw("CONCAT(visitors.FirstName, ' ', visitors.Surname) as FullName"), 
+                    'visit_logs.PurposeOfVisit', 
+                    'visit_logs.EntryTimestamp'
+                )
+                ->orderBy('visit_logs.EntryTimestamp', 'desc')
+                ->limit(50) // Optimization: Only check the most recent 50
+                ->get();
+
+            $suspiciousLogs = [];
+
+            // B. Run each log through the AI
+            foreach ($recentLogs as $log) {
+                // Ask AIService
+                $aiResult = $this->aiService->checkPurpose($log->PurposeOfVisit);
+                
+                if ($aiResult['is_suspicious']) {
+                    // Add the "Confidence Score" so we can show it in the UI if we want
+                    $log->confidence = $aiResult['confidence']; 
+                    $suspiciousLogs[] = $log;
+                }
+
+                // Limit: Only show top 10 suspicious to keep dashboard clean
+                if (count($suspiciousLogs) >= 10) break; 
+            }
+
+            // ---------------------------------------------------------
+            // 🤖 8. PREDICTION (UPDATED: Now uses Python AI Engine)
+            // ---------------------------------------------------------
+            $predicted = [];
+            
+            if ($period === 'today') {
+                // Instead of PHP math, we now ask the Python Engine via AIService
+                $predicted = $this->aiService->predictHourlyTraffic();
+            }
+
             return response()->json([
                 'summary' => [
-                    'total' => $totalVisitors,
-                    'active' => $activeVisitors,
+                    'total' => $totalVisits,
+                    'active' => $activeVisitors, 
                     'banned' => $bannedAttempts
                 ],
                 'peak_hours' => $peakHours,
-                'departments' => $departments
+                'predicted_hours' => $predicted,
+                'departments' => $departments,
+                'demographics' => ['sex' => $sexDistribution, 'age' => $ageGroups],
+                'suspicious' => $suspiciousLogs
             ]);
 
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            \Illuminate\Support\Facades\Log::error("Analytics Error: " . $e->getMessage());
+            return response()->json(['error' => 'Server Error: ' . $e->getMessage()], 500);
         }
     }
 
     // ------------------------------------------------------------------
-    // EXISTING FUNCTIONS (Store, CheckUser, etc.)
+    // EXISTING FUNCTIONS (UNCHANGED)
     // ------------------------------------------------------------------
 
     public function store(Request $request)
