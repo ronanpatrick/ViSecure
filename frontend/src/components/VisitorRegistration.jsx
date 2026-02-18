@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import VisitorPass from './VisitorPass';
-import FaceScanner from './FaceScanner'; // 👈 IMPORT THE NEW COMPONENT
+import FaceScanner from './FaceScanner'; 
 import { resizeBase64 } from '../utils/imageResizer';
 
 export default function VisitorRegistration() {
@@ -9,19 +9,34 @@ export default function VisitorRegistration() {
     const [step, setStep] = useState(0); 
     const [formData, setFormData] = useState({
         FirstName: '',
-        MiddleInitial: '',
+        MiddleName: '',
         Surname: '',
         Age: '',
         Sex: '',
+        VisitorType: 'Visitor', // Default
         PurposeOfVisit: '',
-        PersonToVisit: '',
         DepartmentToVisit: '',
+        PersonToVisit: '',
+        ContactNumber: '',
+        Email: ''
     });
     
+    const [customDepartment, setCustomDepartment] = useState(''); // Handle "Others" input
     const [successData, setSuccessData] = useState(null);
     const [photos, setPhotos] = useState([]); 
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+
+    // --- LISTS ---
+    const departments = [
+        "Registrar", "Accounting", "Dean's Office", "Clinic", 
+        "Guidance Office", "Library", "Laboratory", "Faculty Room", 
+        "HR Office", "Principal's Office", "Others"
+    ];
+
+    const visitorTypes = [
+        "Visitor", "Contractor", "Parent/Guardian", "Alumni", "Delivery", "Applicant", "Guest Speaker"
+    ];
 
     // --- HANDLERS ---
     const handleChange = (e) => {
@@ -31,7 +46,12 @@ export default function VisitorRegistration() {
     const handleModeSelect = (mode) => {
         setError('');
         setMessage('');
-        setFormData({ FirstName: '', MiddleInitial: '', Surname: '', Age: '', Sex: '', PurposeOfVisit: '', PersonToVisit: '', DepartmentToVisit: '' });
+        setFormData({ 
+            FirstName: '', MiddleName: '', Surname: '', Age: '', Sex: '', 
+            VisitorType: 'Visitor', PurposeOfVisit: '', PersonToVisit: '', 
+            DepartmentToVisit: '', ContactNumber: '', Email: '' 
+        });
+        setCustomDepartment('');
         setPhotos([]);
         
         if (mode === 'NEW') setStep(1); 
@@ -63,10 +83,13 @@ export default function VisitorRegistration() {
             
             setFormData({
                 FirstName: user.FirstName,
-                MiddleInitial: user.MiddleInitial || '',
+                MiddleName: user.MiddleName || '',
                 Surname: user.Surname,
                 Age: user.Age,
                 Sex: user.Sex,
+                VisitorType: user.VisitorType || 'Visitor',
+                ContactNumber: user.ContactNumber || '',
+                Email: user.Email || '',
                 PurposeOfVisit: '', 
                 PersonToVisit: '',
                 DepartmentToVisit: '',
@@ -86,6 +109,14 @@ export default function VisitorRegistration() {
         setMessage('');
         setError('');
 
+        // Logic: If department is "Others", use the custom input
+        const finalDepartment = formData.DepartmentToVisit === 'Others' ? customDepartment : formData.DepartmentToVisit;
+
+        if (formData.DepartmentToVisit === 'Others' && !customDepartment.trim()) {
+            setError("Please specify the department.");
+            return;
+        }
+
         try {
             setMessage('Processing biometric data...'); 
 
@@ -95,7 +126,12 @@ export default function VisitorRegistration() {
                  processedPhotos = await Promise.all(photos.map(p => resizeBase64(p)));
             }
 
-            const payload = { ...formData, photos: processedPhotos };
+            const payload = { 
+                ...formData, 
+                DepartmentToVisit: finalDepartment,
+                photos: processedPhotos 
+            };
+
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/register`, payload);
             
             const idToSave = response.data.log_id || response.data.visitor_id;
@@ -132,12 +168,13 @@ export default function VisitorRegistration() {
     };
 
     const pageStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', width: '100vw', backgroundColor: colors.background, fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif" };
-    const containerStyle = { width: '100%', maxWidth: '420px', padding: '40px', backgroundColor: colors.card, boxShadow: '0 2px 15px rgba(0,0,0,0.05)', borderRadius: '0px', border: `1px solid ${colors.border}` };
+    const containerStyle = { width: '100%', maxWidth: '600px', padding: '40px', backgroundColor: colors.card, boxShadow: '0 2px 15px rgba(0,0,0,0.05)', borderRadius: '8px', border: `1px solid ${colors.border}` };
     const headerStyle = { textAlign: 'center', marginBottom: '30px', color: colors.primary, fontSize: '24px', fontWeight: '600', letterSpacing: '-0.5px' };
-    const labelStyle = { display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '500', color: colors.subtext, textTransform: 'uppercase', letterSpacing: '0.5px' };
-    const inputStyle = { width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '4px', border: `1px solid ${colors.border}`, backgroundColor: '#fff', fontSize: '15px', color: colors.text, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' };
+    const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: '600', color: colors.subtext, textTransform: 'uppercase', letterSpacing: '0.5px' };
+    const inputStyle = { width: '100%', padding: '10px 12px', marginBottom: '15px', borderRadius: '4px', border: `1px solid ${colors.border}`, backgroundColor: '#fff', fontSize: '14px', color: colors.text, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' };
     const buttonStyle = { width: '100%', padding: '14px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase', letterSpacing: '1px', transition: 'background 0.2s' };
     const secondaryButtonStyle = { ...buttonStyle, backgroundColor: 'transparent', color: colors.subtext, border: `1px solid ${colors.border}` };
+    const rowStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' };
 
     return (
         <div style={pageStyle}>
@@ -165,53 +202,79 @@ export default function VisitorRegistration() {
                             <span style={{ fontSize: '18px', fontWeight: '500', color: colors.primary }}>Visitor Details</span>
                          </div>
                          
-                         <div style={{ display: 'flex', gap: '10px' }}>
-                            <div style={{ flex: 2 }}>
+                         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.5fr', gap: '10px' }}>
+                            <div>
                                 <label style={labelStyle}>First Name</label>
                                 <input type="text" name="FirstName" value={formData.FirstName} onChange={handleChange} required style={inputStyle} />
                             </div>
-                            <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>M.I.</label>
-                                <input type="text" name="MiddleInitial" value={formData.MiddleInitial} onChange={handleChange} maxLength={3} style={inputStyle} />
+                            <div>
+                                <label style={labelStyle}>Mid Name</label>
+                                <input type="text" name="MiddleName" value={formData.MiddleName} onChange={handleChange} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Last Name</label>
+                                <input type="text" name="Surname" value={formData.Surname} onChange={handleChange} required style={inputStyle} />
                             </div>
                         </div>
 
-                        <label style={labelStyle}>Surname</label>
-                        <input type="text" name="Surname" value={formData.Surname} onChange={handleChange} required style={inputStyle} />
-
-                         <div style={{ display: 'flex', gap: '15px' }}>
-                            <div style={{ flex: 1 }}>
+                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: '10px' }}>
+                            <div>
                                 <label style={labelStyle}>Age</label>
                                 <input type="number" name="Age" value={formData.Age} onChange={handleChange} required style={inputStyle} />
                             </div>
-                            <div style={{ flex: 1 }}>
+                            <div>
                                 <label style={labelStyle}>Sex</label>
-                                <select name="Sex" value={formData.Sex} onChange={handleChange} required style={{...inputStyle, height: '44px'}}>
+                                <select name="Sex" value={formData.Sex} onChange={handleChange} required style={{...inputStyle, height: '42px'}}>
                                     <option value="">Select...</option>
                                     <option value="Male">Male</option>
                                     <option value="Female">Female</option>
                                 </select>
                             </div>
+                            <div>
+                                <label style={labelStyle}>Type</label>
+                                <select name="VisitorType" value={formData.VisitorType} onChange={handleChange} style={{...inputStyle, height: '42px'}}>
+                                    {visitorTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
                          </div>
+
+                         <div style={rowStyle}>
+                            <div>
+                                <label style={labelStyle}>Contact No.</label>
+                                <input type="text" name="ContactNumber" value={formData.ContactNumber} onChange={handleChange} style={inputStyle} />
+                            </div>
+                            <div>
+                                <label style={labelStyle}>Email</label>
+                                <input type="email" name="Email" value={formData.Email} onChange={handleChange} style={inputStyle} />
+                            </div>
+                         </div>
+
+                         <hr style={{border:'0', borderTop:`1px solid ${colors.border}`, margin:'10px 0 20px 0'}}/>
+
                          <label style={labelStyle}>Purpose of Visit</label>
                          <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} />
                          
-                         <div style={{ display: 'flex', gap: '15px' }}>
-                             <div style={{ flex: 1 }}>
+                         <div style={rowStyle}>
+                             <div>
                                  <label style={labelStyle}>Person to Visit</label>
                                  <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
                              </div>
-                             <div style={{ flex: 1 }}>
+                             <div>
                                  <label style={labelStyle}>Department</label>
-                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '46px'}}>
+                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '42px'}}>
                                      <option value="">Select...</option>
-                                     <option value="HR">HR</option>
-                                     <option value="IT">IT</option>
-                                     <option value="Finance">Finance</option>
-                                     <option value="Admin">Admin</option>
-                                     <option value="Faculty">Faculty</option>
-                                     <option value="Other">Other</option>
+                                     {departments.map(d => <option key={d} value={d}>{d}</option>)}
                                  </select>
+                                 {formData.DepartmentToVisit === 'Others' && (
+                                    <input 
+                                        type="text" 
+                                        value={customDepartment}
+                                        onChange={(e) => setCustomDepartment(e.target.value)}
+                                        placeholder="Specify Dept..."
+                                        style={{...inputStyle, marginTop:'-10px', backgroundColor: '#f0f9ff', borderColor: '#3b82f6'}}
+                                        required
+                                    />
+                                 )}
                              </div>
                          </div>
 
@@ -252,34 +315,39 @@ export default function VisitorRegistration() {
                     </div>
                 )}
 
-                {/* --- STEP 5: UPDATE DETAILS --- */}
+                {/* --- STEP 5: UPDATE DETAILS (Returning User) --- */}
                 {step === 5 && (
                     <form onSubmit={handleSubmit}>
                         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                             <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Welcome Back</h2>
                             <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>
-                                {formData.FirstName} {formData.Surname}
+                                {formData.FirstName} {formData.Surname} ({formData.VisitorType})
                             </p>
                         </div>
                         <label style={labelStyle}>New Purpose of Visit</label>
                         <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} autoFocus />
                         
-                        <div style={{ display: 'flex', gap: '15px' }}>
-                             <div style={{ flex: 1 }}>
+                        <div style={rowStyle}>
+                             <div>
                                  <label style={labelStyle}>Person to Visit</label>
                                  <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} />
                              </div>
-                             <div style={{ flex: 1 }}>
+                             <div>
                                  <label style={labelStyle}>Department</label>
-                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '46px'}}>
+                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '42px'}}>
                                      <option value="">Select...</option>
-                                     <option value="HR">HR</option>
-                                     <option value="IT">IT</option>
-                                     <option value="Finance">Finance</option>
-                                     <option value="Admin">Admin</option>
-                                     <option value="Faculty">Faculty</option>
-                                     <option value="Other">Other</option>
+                                     {departments.map(d => <option key={d} value={d}>{d}</option>)}
                                  </select>
+                                 {formData.DepartmentToVisit === 'Others' && (
+                                    <input 
+                                        type="text" 
+                                        value={customDepartment}
+                                        onChange={(e) => setCustomDepartment(e.target.value)}
+                                        placeholder="Specify Dept..."
+                                        style={{...inputStyle, marginTop:'-10px', backgroundColor: '#f0f9ff', borderColor: '#3b82f6'}}
+                                        required
+                                    />
+                                 )}
                              </div>
                          </div>
 
@@ -290,7 +358,10 @@ export default function VisitorRegistration() {
                 {/* --- STEP 3: DIGITAL PASS --- */}
                 {step === 3 && successData && (
                     <VisitorPass 
-                        visitor={{ FullName: successData.name, AffiliationType: 'Visitor' }} 
+                        visitor={{ 
+                            FullName: successData.name, 
+                            AffiliationType: formData.VisitorType 
+                        }} 
                         visitId={successData.visitId} 
                         onClose={() => window.location.reload()} 
                     />

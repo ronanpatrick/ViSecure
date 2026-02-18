@@ -19,10 +19,7 @@ class VisitorController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // 📊 ANALYTICS ENDPOINT (Updated to use Python AI Engine)
-    // ------------------------------------------------------------------
-    // ------------------------------------------------------------------
-    // 📊 ANALYTICS ENDPOINT (Cleaned: Removed Suspicious Table Logic)
+    // 📊 ANALYTICS ENDPOINT
     // ------------------------------------------------------------------
     public function getAnalytics(Request $request)
     {
@@ -105,8 +102,36 @@ class VisitorController extends Controller
             $ageGroups = $ageQuery->groupBy('age_range')->get();
 
             // ---------------------------------------------------------
-            // 🤖 8. PREDICTION (Keep this!)
+            // 🔥 9. HEATMAP DATA (Day vs Hour)
             // ---------------------------------------------------------
+            $heatmapQuery = DB::table('visit_logs')
+                ->select(
+                    DB::raw('DAYOFWEEK(EntryTimestamp) as day_of_week'), // 1=Sun, 2=Mon...
+                    DB::raw('HOUR(EntryTimestamp) as hour_of_day'),
+                    DB::raw('count(*) as count')
+                );
+            
+            $applyDate($heatmapQuery); 
+
+            $rawHeatmap = $heatmapQuery
+                ->groupBy('day_of_week', 'hour_of_day')
+                ->get();
+
+            $heatmapGrid = [];
+            $days = [2 => 'Mon', 3 => 'Tue', 4 => 'Wed', 5 => 'Thu', 6 => 'Fri', 7 => 'Sat']; 
+            
+            foreach ($days as $key => $label) {
+                $heatmapGrid[$label] = array_fill(7, 12, 0); // Fill hours 7-18 with 0
+            }
+
+            foreach ($rawHeatmap as $data) {
+                $dayLabel = $days[$data->day_of_week] ?? null;
+                if ($dayLabel && $data->hour_of_day >= 7 && $data->hour_of_day <= 18) {
+                    $heatmapGrid[$dayLabel][$data->hour_of_day] = $data->count;
+                }
+            }
+
+            // 8. PREDICTION
             $predicted = [];
             if ($period === 'today') {
                 $predicted = $this->aiService->predictHourlyTraffic();
@@ -121,8 +146,8 @@ class VisitorController extends Controller
                 'peak_hours' => $peakHours,
                 'predicted_hours' => $predicted,
                 'departments' => $departments,
-                'demographics' => ['sex' => $sexDistribution, 'age' => $ageGroups]
-                // ❌ REMOVED: 'suspicious' => $suspiciousLogs
+                'demographics' => ['sex' => $sexDistribution, 'age' => $ageGroups],
+                'heatmap' => $heatmapGrid 
             ]);
 
         } catch (\Exception $e) {
@@ -132,19 +157,24 @@ class VisitorController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // STORE FUNCTION (UPDATED: Saves IsFlagged to Database)
+    // STORE FUNCTION (UPDATED FOR NEW FIELDS)
     // ------------------------------------------------------------------
-
     public function store(Request $request)
     {
-        // 1. Validation
+        // 1. Validation (Updated with new optional fields)
         $validated = $request->validate([
-            'FirstName' => 'required|string|max:255',
-            'Surname' => 'required|string|max:255',
-            'Age' => 'required|integer',
-            'Sex' => 'required|string',
-            'PurposeOfVisit' => 'required|string',
-            'photos' => 'array', 
+            'FirstName'         => 'required|string|max:255',
+            'MiddleName'        => 'nullable|string|max:255', // New
+            'Surname'           => 'required|string|max:255',
+            'Age'               => 'required|integer',
+            'Sex'               => 'required|string',
+            'VisitorType'       => 'required|string', // New
+            'PurposeOfVisit'    => 'required|string',
+            'DepartmentToVisit' => 'required|string', // Dropdown/Custom text from frontend
+            'PersonToVisit'     => 'nullable|string|max:255', // New optional
+            'ContactNumber'     => 'nullable|string|max:20',
+            'Email'             => 'nullable|email|max:255', // New optional
+            'photos'            => 'array', 
         ]);
 
         // 2. Check Name Duplicate
@@ -155,7 +185,7 @@ class VisitorController extends Controller
 
         if ($visitor) {
             // 🛑 SECURITY CHECK: IS BANNED?
-            if ($visitor->Status === 'Banned') {
+            if ($visitor->IsWatchlisted) {
                 return response()->json([
                     'message' => 'ACCESS DENIED: This individual is BANNED.',
                     'status' => 'BANNED'
@@ -176,7 +206,7 @@ class VisitorController extends Controller
                 
                 if ($duplicateID) {
                     $dupUser = Visitor::find($duplicateID);
-                    if ($dupUser && $dupUser->Status === 'Banned') {
+                    if ($dupUser && $dupUser->IsWatchlisted) {
                         return response()->json([
                              'message' => 'ACCESS DENIED: Face matches BANNED individual.',
                              'status' => 'BANNED'
@@ -188,15 +218,17 @@ class VisitorController extends Controller
                 }
             }
 
-            // Create Visitor
+            // Create Visitor (Updated with new fields)
             $visitor = Visitor::create([
-                'FirstName' => $validated['FirstName'],
-                'MiddleInitial' => $request->MiddleInitial ?? '',
-                'Surname' => $validated['Surname'],
-                'Age' => $request->Age,
-                'Sex' => $request->Sex,
-                'AffiliationType' => 'Visitor',
+                'FirstName'     => $validated['FirstName'],
+                'MiddleName'    => $request->MiddleName ?? '', // Save Middle Name
+                'Surname'       => $validated['Surname'],
+                'Age'           => $request->Age,
+                'Sex'           => $request->Sex,
+                'VisitorType'   => $validated['VisitorType'],   // e.g. Contractor
+                'AffiliationType' => 'Visitor',                 // Legacy field (default)
                 'ContactNumber' => $request->ContactNumber ?? null,
+                'Email'         => $request->Email ?? null,     // Save Email
             ]);
 
             // 🛑 AI ACTION: Validate & Train
@@ -213,18 +245,18 @@ class VisitorController extends Controller
         // 🧠 AI CHECK: Ask Python if the purpose is suspicious
         // ---------------------------------------------------------
         $aiCheck = $this->aiService->checkPurpose($validated['PurposeOfVisit']);
-        $isFlagged = $aiCheck['is_suspicious']; // True or False
+        $isFlagged = $aiCheck['is_suspicious']; 
 
-        // 3. Create Visit Log (WITH FLAG)
+        // 3. Create Visit Log (Updated with new fields)
         $log = VisitLog::create([
-            'VisitorID' => $visitor->VisitorID,
-            'EntryTimestamp' => now(),
-            'PurposeOfVisit' => $validated['PurposeOfVisit'],
-            'PersonToVisit' => $request->PersonToVisit ?? null,
-            'DepartmentToVisit' => $request->DepartmentToVisit ?? 'General',
+            'VisitorID'           => $visitor->VisitorID,
+            'EntryTimestamp'      => now(),
+            'PurposeOfVisit'      => $validated['PurposeOfVisit'],
+            'PersonToVisit'       => $request->PersonToVisit ?? null, // Save Person
+            'DepartmentToVisit'   => $validated['DepartmentToVisit'], // Save Dept
             'PrivacyConsentGiven' => true,
-            'Status' => 'Active',
-            'IsFlagged' => $isFlagged // 👈 SAVING THE AI DECISION
+            'Status'              => 'Active',
+            'IsFlagged'           => $isFlagged 
         ]);
 
         return response()->json([
@@ -235,7 +267,7 @@ class VisitorController extends Controller
             'watchlist_reason' => $visitor->WatchlistReason ?? null,
             'visitor_id' => $visitor->VisitorID,
             'log_id' => $log->id,
-            'is_flagged' => $isFlagged, // 👈 Tell Frontend immediately
+            'is_flagged' => $isFlagged, 
             'warning_message' => $isFlagged ? "⚠️ Monitor: Purpose flagged as suspicious." : null
         ], 201);
     }
@@ -282,6 +314,7 @@ class VisitorController extends Controller
         return response()->json($visitor);
     }
 
+    // 🚫 BAN FUNCTION
     public function toggleWatchlist(Request $request, $id)
     {
         $visitor = Visitor::find($id);
@@ -292,14 +325,67 @@ class VisitorController extends Controller
             $visitor->WatchlistReason = null;
         } else {
             $visitor->IsWatchlisted = true;
-            $visitor->WatchlistReason = $request->input('reason', 'General Suspicion');
+            $visitor->WatchlistReason = $request->input('reason', 'Manual Ban');
         }
         $visitor->save();
 
         return response()->json([
-            'message' => $visitor->IsWatchlisted ? 'Added to Watchlist' : 'Removed from Watchlist',
             'state' => $visitor->IsWatchlisted,
-            'reason' => $visitor->WatchlistReason
+            'message' => $visitor->IsWatchlisted ? 'Banned' : 'Unbanned'
         ]);
     }
-}
+
+    // 🚩 AI FLAG TOGGLE (Red)
+    public function toggleFlag(Request $request, $id)
+    {
+        $log = VisitLog::find($id);
+        if (!$log) return response()->json(['message' => 'Log not found'], 404);
+
+        if ($log->IsFlagged) {
+            // Unflag
+            $log->IsFlagged = false;
+            $log->FlagReason = null;
+            $message = 'Flag removed.';
+        } else {
+            // Flag
+            $log->IsFlagged = true;
+            $log->FlagReason = $request->input('reason', 'Manual Suspicion');
+            $message = 'Entry flagged as suspicious.';
+        }
+        $log->save();
+
+        return response()->json([
+            'message' => $message,
+            'is_flagged' => $log->IsFlagged,
+            'reason' => $log->FlagReason
+        ]);
+    }
+
+    // ------------------------------------------------------------------
+    // 👮‍♂️ MANUAL FLAG (Yellow - Officer Discretion)
+    // ------------------------------------------------------------------
+    public function toggleManualFlag(Request $request, $id)
+    {
+        $log = VisitLog::find($id);
+        if (!$log) return response()->json(['message' => 'Log not found'], 404);
+
+        if ($log->IsManualFlag) {
+            // Unflag
+            $log->IsManualFlag = false;
+            $log->ManualFlagReason = null;
+            $message = 'Manual flag removed.';
+        } else {
+            // Flag
+            $log->IsManualFlag = true;
+            $log->ManualFlagReason = $request->input('reason', 'Officer Discretion');
+            $message = 'Visitor manually flagged.';
+        }
+        $log->save();
+
+        return response()->json([
+            'message' => $message,
+            'is_manual_flag' => (bool)$log->IsManualFlag, // Casting to bool ensures frontend gets true/false
+            'reason' => $log->ManualFlagReason
+        ]);
+    }
+} // <--- End of Class

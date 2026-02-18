@@ -4,7 +4,7 @@ import axios from 'axios';
 export default function AnalyticsDashboard() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [period, setPeriod] = useState('today'); // 👈 NEW STATE
+    const [period, setPeriod] = useState('today');
 
     // Use the environment variable so it works on Vercel automatically
     const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -99,124 +99,144 @@ export default function AnalyticsDashboard() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '20px' }}>
                 
-                {/* 📊 TRAFFIC CHART (With AI Ghost Bars only if 'Today') */}
-                <div style={chartBoxStyle}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
-                        <h3 style={{margin:0, ...chartTitleStyle}}>
-                            🕒 {period === 'today' ? "Traffic: Actual vs. Predicted" : "Historical Hourly Traffic"}
-                        </h3>
-                        {period === 'today' && (
-                            <div style={{fontSize:'10px', display:'flex', gap:'10px'}}>
-                                <span style={{color:'#3b82f6'}}>● Actual</span>
-                                <span style={{color:'#e5e7eb'}}>● AI Predicted</span>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                    {/* 📊 TRAFFIC CHART (With AI Ghost Bars only if 'Today') */}
+                    <div style={chartBoxStyle}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
+                            <h3 style={{margin:0, ...chartTitleStyle}}>
+                                🕒 {period === 'today' ? "Traffic: Actual vs. Predicted" : "Historical Hourly Traffic"}
+                            </h3>
+                            {period === 'today' && (
+                                <div style={{fontSize:'10px', display:'flex', gap:'10px'}}>
+                                    <span style={{color:'#3b82f6'}}>● Actual</span>
+                                    <span style={{color:'#e5e7eb'}}>● AI Predicted</span>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* The Chart Container */}
+                        <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '4px', paddingTop: '20px' }}>
+                            {Array.from({ length: 24 }, (_, i) => i).map((hour) => {
+                                // Find data
+                                const log = data.peak_hours.find(d => parseInt(d.hour) === hour);
+                                const actualCount = log ? log.count : 0;
+                                const predictedCount = data.predicted_hours ? data.predicted_hours[hour] : 0;
+
+                                // Calculate heights
+                                const actualHeight = (actualCount / maxCount) * 100;
+                                const predictedHeight = (predictedCount / maxCount) * 100;
+
+                                return (
+                                    <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', height: '100%' }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', width: '100%', height: '100%', position: 'relative' }}>
+                                            
+                                            {/* GHOST BAR (Only show for Today to compare Real vs Expected) */}
+                                            {period === 'today' && (
+                                                <div style={{ 
+                                                    width: '60%', height: `${predictedHeight}%`, 
+                                                    backgroundColor: '#e5e7eb', borderRadius: '2px',
+                                                    position: 'absolute', bottom: 0, zIndex: 1
+                                                }} title={`AI Predicted: ${predictedCount}`}></div>
+                                            )}
+
+                                            {/* ACTUAL BAR */}
+                                            <div style={{ 
+                                                width: period === 'today' ? '40%' : '70%', 
+                                                height: `${actualHeight}%`, 
+                                                backgroundColor: '#3b82f6', 
+                                                borderRadius: '2px', zIndex: 2, opacity: 0.9,
+                                                minHeight: '4px' // Always show a baseline
+                                            }} title={`${actualCount} visits`}></div>
+                                        </div>
+                                        <span style={{ fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', marginTop: '5px' }}>
+                                            {hour % 3 === 0 ? `${hour}:00` : ''}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 🔥 TRAFFIC HEATMAP (New Section) */}
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>🔥 Weekly Traffic Heatmap</h3>
+                        {/* Only render if we have heatmap data (avoid crash on old API response) */}
+                        {data.heatmap ? (
+                            <TrafficHeatmap data={data.heatmap} />
+                        ) : (
+                            <div style={{textAlign: 'center', color: '#9ca3af', padding: '20px'}}>
+                                Select a longer time range (e.g., 7 Days) to see patterns.
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* 🏢 DEPARTMENT & DEMOGRAPHICS (Right Column) */}
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
                     
-                    {/* The Chart Container */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '4px', paddingTop: '20px' }}>
-                        {Array.from({ length: 24 }, (_, i) => i).map((hour) => {
-                            // Find data
-                            const log = data.peak_hours.find(d => parseInt(d.hour) === hour);
-                            const actualCount = log ? log.count : 0;
-                            const predictedCount = data.predicted_hours ? data.predicted_hours[hour] : 0;
-
-                            // Calculate heights
-                            const actualHeight = (actualCount / maxCount) * 100;
-                            const predictedHeight = (predictedCount / maxCount) * 100;
-
-                            return (
-                                <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', height: '100%' }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', width: '100%', height: '100%', position: 'relative' }}>
-                                        
-                                        {/* GHOST BAR (Only show for Today to compare Real vs Expected) */}
-                                        {period === 'today' && (
-                                            <div style={{ 
-                                                width: '60%', height: `${predictedHeight}%`, 
-                                                backgroundColor: '#e5e7eb', borderRadius: '2px',
-                                                position: 'absolute', bottom: 0, zIndex: 1
-                                            }} title={`AI Predicted: ${predictedCount}`}></div>
-                                        )}
-
-                                        {/* ACTUAL BAR */}
+                    {/* Top Departments */}
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>🏢 Top Departments</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                            {data.departments.map((dept, i) => (
+                                <div key={i}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
+                                        <span style={{ fontWeight: '600', color: '#374151' }}>{dept.DepartmentToVisit}</span>
+                                        <span style={{ color: '#6b7280' }}>{dept.count} visits</span>
+                                    </div>
+                                    <div style={{ width: '100%', height: '8px', backgroundColor: '#f3f4f6', borderRadius: '10px', overflow: 'hidden' }}>
                                         <div style={{ 
-                                            width: period === 'today' ? '40%' : '70%', // Wider bars for historical views
-                                            height: `${actualHeight}%`, 
-                                            backgroundColor: '#3b82f6', 
-                                            borderRadius: '2px', zIndex: 2, opacity: 0.9,
-                                            minHeight: '4px' // Always show a baseline
-                                        }} title={`${actualCount} visits`}></div>
-                                    </div>
-                                    <span style={{ fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', marginTop: '5px' }}>
-                                        {hour % 3 === 0 ? `${hour}:00` : ''}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* 🏢 DEPARTMENT LIST */}
-                <div style={chartBoxStyle}>
-                    <h3 style={chartTitleStyle}>🏢 Top Departments</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        {data.departments.map((dept, i) => (
-                            <div key={i}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                                    <span style={{ fontWeight: '600', color: '#374151' }}>{dept.DepartmentToVisit}</span>
-                                    <span style={{ color: '#6b7280' }}>{dept.count} visits</span>
-                                </div>
-                                <div style={{ width: '100%', height: '8px', backgroundColor: '#f3f4f6', borderRadius: '10px', overflow: 'hidden' }}>
-                                    <div style={{ 
-                                        width: `${(dept.count / data.summary.total) * 100}%`, 
-                                        height: '100%', 
-                                        backgroundColor: i === 0 ? '#8b5cf6' : '#c084fc', 
-                                        borderRadius: '10px'
-                                    }}></div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* 📊 DEMOGRAPHICS */}
-                <div style={chartBoxStyle}>
-                    <h3 style={chartTitleStyle}>👥 Visitor Demographics</h3>
-                    <div style={{ display: 'flex', gap: '20px' }}>
-                        
-                        {/* Sex Distribution */}
-                        <div style={{ flex: 1 }}>
-                            <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY GENDER</h4>
-                            {data.demographics?.sex.map((item, i) => (
-                                <div key={i} style={{marginBottom: '8px'}}>
-                                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
-                                        <span>{item.Sex}</span><span>{item.count}</span>
-                                    </div>
-                                    <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
-                                        <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#ec4899', borderRadius:'3px'}}></div>
+                                            width: `${(dept.count / data.summary.total) * 100}%`, 
+                                            height: '100%', 
+                                            backgroundColor: i === 0 ? '#8b5cf6' : '#c084fc', 
+                                            borderRadius: '10px'
+                                        }}></div>
                                     </div>
                                 </div>
                             ))}
                         </div>
+                    </div>
 
-                        {/* Age Distribution */}
-                        <div style={{ flex: 1 }}>
-                            <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY AGE</h4>
-                            {data.demographics?.age.map((item, i) => (
-                                <div key={i} style={{marginBottom: '8px'}}>
-                                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
-                                        <span>{item.age_range}</span><span>{item.count}</span>
+                    {/* 📊 DEMOGRAPHICS */}
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>👥 Visitor Demographics</h3>
+                        <div style={{ display: 'flex', gap: '20px' }}>
+                            
+                            {/* Sex Distribution */}
+                            <div style={{ flex: 1 }}>
+                                <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY GENDER</h4>
+                                {data.demographics?.sex.map((item, i) => (
+                                    <div key={i} style={{marginBottom: '8px'}}>
+                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
+                                            <span>{item.Sex}</span><span>{item.count}</span>
+                                        </div>
+                                        <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
+                                            <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#ec4899', borderRadius:'3px'}}></div>
+                                        </div>
                                     </div>
-                                    <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
-                                        <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#f59e0b', borderRadius:'3px'}}></div>
+                                ))}
+                            </div>
+
+                            {/* Age Distribution */}
+                            <div style={{ flex: 1 }}>
+                                <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY AGE</h4>
+                                {data.demographics?.age.map((item, i) => (
+                                    <div key={i} style={{marginBottom: '8px'}}>
+                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
+                                            <span>{item.age_range}</span><span>{item.count}</span>
+                                        </div>
+                                        <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
+                                            <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#f59e0b', borderRadius:'3px'}}></div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
 
             </div>
+
         </div>
     );
 }
@@ -236,6 +256,82 @@ const MetricCard = ({ label, value, color }) => (
     </div>
 );
 
+// 🔥 HEATMAP COMPONENT
+const TrafficHeatmap = ({ data }) => {
+    if (!data || Object.keys(data).length === 0) return <div className="p-4 text-gray-500 text-center text-sm">No traffic data for this period</div>;
+
+    const hours = Array.from({ length: 12 }, (_, i) => i + 7); // 7, 8, ..., 18
+    const days = Object.keys(data); // Mon, Tue...
+    
+    // Find max value to scale colors opacity
+    let maxVal = 0;
+    days.forEach(d => {
+        Object.values(data[d]).forEach(v => maxVal = Math.max(maxVal, v));
+    });
+
+    const getColor = (value) => {
+        if (value === 0) return '#f3f4f6'; // Gray-100 (Empty)
+        const intensity = maxVal > 0 ? (value / maxVal) : 0;
+        // Blue scale (Tailwind blue-600 base)
+        return `rgba(37, 99, 235, ${Math.max(intensity, 0.1)})`;
+    };
+
+    return (
+        <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '40px repeat(12, 1fr)', gap: '4px', minWidth: '100%' }}>
+                {/* Header Row (Hours) */}
+                <div />
+                {hours.map(h => (
+                    <div key={h} style={{ fontSize: '10px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold' }}>
+                        {h > 12 ? h - 12 : h}{h >= 12 ? 'p' : 'a'}
+                    </div>
+                ))}
+
+                {/* Rows (Days) */}
+                {days.map(day => (
+                    <React.Fragment key={day}>
+                        {/* Day Label */}
+                        <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', alignSelf: 'center' }}>
+                            {day}
+                        </div>
+                        
+                        {/* Cells */}
+                        {hours.map(h => {
+                            const count = data[day][h] || 0;
+                            return (
+                                <div 
+                                    key={`${day}-${h}`}
+                                    title={`${day} @ ${h}:00 - ${count} visitors`}
+                                    style={{
+                                        backgroundColor: getColor(count),
+                                        height: '24px',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '9px',
+                                        color: count > (maxVal / 2) ? 'white' : 'transparent', // Hide numbers unless busy
+                                        fontWeight: 'bold',
+                                        cursor: 'default'
+                                    }}
+                                >
+                                    {count > 0 ? count : ''}
+                                </div>
+                            );
+                        })}
+                    </React.Fragment>
+                ))}
+            </div>
+            
+            {/* Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '10px', color: '#9ca3af', justifyContent: 'flex-end' }}>
+                <span>Less</span>
+                <div style={{ width: '60px', height: '6px', background: 'linear-gradient(to right, #eff6ff, #2563eb)', borderRadius: '4px' }} />
+                <span>More</span>
+            </div>
+        </div>
+    );
+};
+
 const chartBoxStyle = { backgroundColor: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' };
 const chartTitleStyle = { margin: '0 0 20px 0', fontSize: '16px', fontWeight: '700', color: '#374151' };
-const barValueStyle = { position: 'absolute', top: '-20px', left: '0', width: '100%', textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#3b82f6' };

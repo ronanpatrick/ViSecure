@@ -15,14 +15,17 @@ class Visitor extends Model
     // 1. UPDATE: Replace FullName with new fields
     protected $fillable = [
         'FirstName', 
-        'MiddleInitial', 
+        'MiddleName', // 👈 Changed from Initial to Name
         'Surname', 
         'Age', 
         'Sex', 
+        'VisitorType', // 👈 New
         'AffiliationType', 
         'ContactNumber', 
-        'Status',
-        'IsWatchlisted' // 👈 NEW
+        'Email', // 👈 New
+        'Status', 
+        'IsWatchlisted', 
+        'WatchlistReason'
     ];
 
     // 2. MAGIC: Automatically add 'FullName' to JSON responses

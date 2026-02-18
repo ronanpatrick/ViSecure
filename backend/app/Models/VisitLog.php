@@ -24,8 +24,11 @@ class VisitLog extends Model
         'PersonToVisit',
         'DepartmentToVisit',
         'PrivacyConsentGiven',
-        'IsFlagged' // 👈 ADD THIS LINE!
-        // Add any other columns you are saving
+        'Status',
+        'IsFlagged',       // AI
+        'FlagReason',      // AI
+        'IsManualFlag',    // 👈 NEW (Add this)
+        'ManualFlagReason' // 👈 NEW (Add this)
     ];
 
     // 3. Link it to the Visitor table
