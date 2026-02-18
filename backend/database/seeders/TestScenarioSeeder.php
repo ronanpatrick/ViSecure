@@ -10,8 +10,9 @@ class TestScenarioSeeder extends Seeder
 {
     public function run()
     {
-        // 1. CLEAN SLATE
+        // 1. 🧹 CLEAN SLATE
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('security_logs')->truncate();
         DB::table('visit_logs')->truncate();
         DB::table('visitors')->truncate();
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
@@ -19,53 +20,47 @@ class TestScenarioSeeder extends Seeder
         $faker = \Faker\Factory::create();
         $departments = ['IT', 'HR', 'Finance', 'Registrar', 'Library', 'Admin', 'Clinic'];
         $purposes = ['Meeting', 'Inquiry', 'Delivery', 'Interview', 'Enrollment', 'Payment'];
+        $types = ['Student', 'Faculty', 'Guest', 'Contractor', 'Alumni'];
 
-        // ---------------------------------------------------------
-        // 🗓️ PHASE 1: HISTORY (Last 30 Days) - FOR AI TRAINING
-        // ---------------------------------------------------------
-        echo "⏳ Generating history for AI training...\n";
+        echo "⏳ Generating history (Last 30 Days)...\n";
         
-        // Loop through the last 30 days
+        // ---------------------------------------------------------
+        // 🗓️ PHASE 1: HISTORY (Last 30 Days) - FOR ANALYTICS
+        // ---------------------------------------------------------
         for ($d = 30; $d >= 1; $d--) {
             $date = Carbon::today()->subDays($d);
-            
-            // Skip weekends (optional, but realistic)
             if ($date->isWeekend()) continue;
 
-            // Varied traffic: Some days are busy (80 visits), some quiet (30 visits)
-            $dailyVisits = rand(30, 80);
+            $dailyVisits = rand(20, 50);
 
             for ($v = 0; $v < $dailyVisits; $v++) {
-                // 🧠 INTELLIGENT TIME GENERATION (Bell Curve Simulation)
                 $rand = rand(1, 100);
-                
-                if ($rand <= 30) {
-                    // 30% Morning Rush (08:00 - 10:00)
-                    $hour = rand(8, 10);
-                } elseif ($rand <= 50) {
-                    // 20% Afternoon Rush (13:00 - 15:00)
-                    $hour = rand(13, 15);
-                } else {
-                    // 50% Random Spread (07:00 - 18:00)
-                    $hour = rand(7, 18);
-                }
+                if ($rand <= 30) $hour = rand(8, 10);
+                elseif ($rand <= 50) $hour = rand(13, 15);
+                else $hour = rand(7, 18);
 
                 $entryTime = $date->copy()->setHour($hour)->setMinute(rand(0, 59));
-                $exitTime = $entryTime->copy()->addMinutes(rand(15, 240)); // Stay 15m to 4h
+                $exitTime = $entryTime->copy()->addMinutes(rand(15, 240)); 
 
-                // Create Visitor
+                // Generate names first
+                $fname = $faker->firstName;
+                $lname = $faker->lastName;
+
                 $vid = DB::table('visitors')->insertGetId([
-                    'FirstName' => $faker->firstName,
-                    'Surname' => $faker->lastName,
+                    'FirstName' => $fname,
+                    'Surname' => $lname,
+                    'FullName' => "$fname $lname", // 👈 ADDED THIS
                     'Age' => rand(18, 60),
                     'Sex' => rand(0, 1) ? 'Male' : 'Female',
-                    'AffiliationType' => 'Guest',
+                    'VisitorType' => $types[array_rand($types)],
+                    'AffiliationType' => $types[array_rand($types)],
                     'Status' => 'Active',
+                    'ContactNumber' => $faker->phoneNumber,
+                    'Email' => $faker->safeEmail,
                     'created_at' => $entryTime,
                     'updated_at' => $entryTime,
                 ]);
 
-                // Create Log
                 DB::table('visit_logs')->insert([
                     'VisitorID' => $vid,
                     'EntryTimestamp' => $entryTime,
@@ -80,50 +75,97 @@ class TestScenarioSeeder extends Seeder
         }
 
         // ---------------------------------------------------------
-        // ⚡ PHASE 2: TODAY (Real-time Simulation)
+        // ⚡ PHASE 2: TODAY (SPECIFIC TEST CASES)
         // ---------------------------------------------------------
-        echo "⚡ Generating live data for today...\n";
+        echo "⚡ Generating specific test cases for today...\n";
         $now = Carbon::now();
 
-        // 1. The "Active" Crowd (People currently inside)
-        for ($i = 0; $i < 15; $i++) {
-            $vid = DB::table('visitors')->insertGetId([
-                'FirstName' => $faker->firstName,
-                'Surname' => $faker->lastName,
-                'Age' => rand(20, 50),
-                'Sex' => rand(0, 1) ? 'Male' : 'Female',
-                'AffiliationType' => 'Visitor',
-                'Status' => 'Active',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+        // 🟢 CASE 1: The "Overstayer"
+        $id1 = DB::table('visitors')->insertGetId([
+            'FirstName' => 'John', 'Surname' => 'Overstay', 'FullName' => 'John Overstay', // 👈 Added
+            'Age' => 30, 'Sex' => 'Male',
+            'VisitorType' => 'Contractor', 'AffiliationType' => 'Contractor', 'Status' => 'Active',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+        DB::table('visit_logs')->insert([
+            'VisitorID' => $id1,
+            'EntryTimestamp' => $now->copy()->subHours(6),
+            'PurposeOfVisit' => 'Repair', 'DepartmentToVisit' => 'Maintenance',
+            'Status' => 'Active',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
 
+        // 🟡 CASE 2: The "Officer Flag"
+        $id2 = DB::table('visitors')->insertGetId([
+            'FirstName' => 'Karen', 'Surname' => 'Smith', 'FullName' => 'Karen Smith', // 👈 Added
+            'Age' => 45, 'Sex' => 'Female',
+            'VisitorType' => 'Guest', 'AffiliationType' => 'Guest', 'Status' => 'Active',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+        $log2 = DB::table('visit_logs')->insertGetId([
+            'VisitorID' => $id2,
+            'EntryTimestamp' => $now->copy()->subMinutes(30),
+            'PurposeOfVisit' => 'Complaint', 'DepartmentToVisit' => 'Admin',
+            'Status' => 'Active',
+            'IsManualFlag' => true,
+            'ManualFlagReason' => 'Verbal Abuse to Guard',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+        DB::table('security_logs')->insert([
+            'VisitorID' => $id2, 'LogID' => $log2, 'Action' => 'FLAG', 'Reason' => 'Verbal Abuse to Guard', 'Officer' => 'Chief Security', 'created_at' => $now
+        ]);
+
+        // 🤖 CASE 3: The "AI Suspect"
+        $id3 = DB::table('visitors')->insertGetId([
+            'FirstName' => 'Robert', 'Surname' => 'Hacker', 'FullName' => 'Robert Hacker', // 👈 Added
+            'Age' => 22, 'Sex' => 'Male',
+            'VisitorType' => 'Student', 'AffiliationType' => 'Student', 'Status' => 'Active',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+        DB::table('visit_logs')->insert([
+            'VisitorID' => $id3,
+            'EntryTimestamp' => $now->copy()->subMinutes(10),
+            'PurposeOfVisit' => 'Unknown', 'DepartmentToVisit' => 'Server Room',
+            'Status' => 'Active',
+            'IsFlagged' => true,
+            'FlagReason' => 'Unauthorized Zone',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+
+        // 🚫 CASE 4: The "Banned User"
+        $id4 = DB::table('visitors')->insertGetId([
+            'FirstName' => 'Evil', 'Surname' => 'Villain', 'FullName' => 'Evil Villain', // 👈 Added
+            'Age' => 50, 'Sex' => 'Male',
+            'VisitorType' => 'Blacklisted', 'AffiliationType' => 'Guest', 
+            'Status' => 'Banned', 'IsWatchlisted' => true, 'WatchlistReason' => 'Theft Incident (2025)',
+            'created_at' => $now, 'updated_at' => $now
+        ]);
+        DB::table('security_logs')->insert([
+            'VisitorID' => $id4, 'Action' => 'BAN', 'Reason' => 'Theft Incident (2025)', 'Officer' => 'Admin', 'created_at' => $now->copy()->subMonths(1)
+        ]);
+
+        // 🟢 CASE 5: Normal Active Visitors
+        for ($i = 0; $i < 10; $i++) {
+            $fname = $faker->firstName;
+            $lname = $faker->lastName;
+
+            $vid = DB::table('visitors')->insertGetId([
+                'FirstName' => $fname, 
+                'Surname' => $lname,
+                'FullName' => "$fname $lname", // 👈 ADDED THIS
+                'Age' => rand(20, 40), 'Sex' => rand(0, 1) ? 'Male' : 'Female',
+                'VisitorType' => 'Guest', 'AffiliationType' => 'Guest', 'Status' => 'Active',
+                'created_at' => $now, 'updated_at' => $now
+            ]);
             DB::table('visit_logs')->insert([
                 'VisitorID' => $vid,
-                'EntryTimestamp' => $now->copy()->subMinutes(rand(5, 120)), // Entered recently
-                'PurposeOfVisit' => 'Meeting',
-                'DepartmentToVisit' => $departments[array_rand($departments)],
-                'Status' => 'Active', // Still inside
-                'created_at' => $now,
-                'updated_at' => $now,
+                'EntryTimestamp' => $now->copy()->subMinutes(rand(5, 60)),
+                'PurposeOfVisit' => 'Meeting', 'DepartmentToVisit' => $departments[array_rand($departments)],
+                'Status' => 'Active',
+                'created_at' => $now, 'updated_at' => $now
             ]);
         }
 
-        // 2. The Threat (Watchlisted)
-        $jokerId = DB::table('visitors')->insertGetId([
-            'FirstName' => 'Joker', 'Surname' => 'Napier', 'Age' => 45, 'Sex' => 'Male',
-            'AffiliationType' => 'Guest', 'Status' => 'Active', 
-            'IsWatchlisted' => true, 
-            'created_at' => $now, 'updated_at' => $now,
-        ]);
-        DB::table('visit_logs')->insert([
-            'VisitorID' => $jokerId,
-            'EntryTimestamp' => $now->copy()->subMinutes(15), 
-            'PurposeOfVisit' => 'Inquiry', 'DepartmentToVisit' => 'Security',
-            'Status' => 'Active',
-            'created_at' => $now, 'updated_at' => $now,
-        ]);
-        
-        echo "✅ Seeder Complete! Generated ~1500 historical visits.\n";
+        echo "✅ Seeder Complete! Database populated with test cases.\n";
     }
 }

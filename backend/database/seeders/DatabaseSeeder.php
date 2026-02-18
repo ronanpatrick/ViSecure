@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -12,15 +11,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // This calls your specific AdminUserSeeder file
-        $this->call([
-            AdminUserSeeder::class,
-        ]);
+        // 1. Create Admin
+        $this->call(AdminUserSeeder::class);
 
-        // Optional: Keep the test user if you want it for other tests
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // 2. Create Visitors & Scenarios (This is the missing part!)
+        $this->call(TestScenarioSeeder::class);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Visitor;
 use App\Models\VisitLog;
+use App\Models\SecurityLog; // ✅ Imported
 use App\Services\AIService;
 use Carbon\Carbon;             
 use Illuminate\Support\Facades\DB;
@@ -164,16 +165,16 @@ class VisitorController extends Controller
         // 1. Validation (Updated with new optional fields)
         $validated = $request->validate([
             'FirstName'         => 'required|string|max:255',
-            'MiddleName'        => 'nullable|string|max:255', // New
+            'MiddleName'        => 'nullable|string|max:255', 
             'Surname'           => 'required|string|max:255',
             'Age'               => 'required|integer',
             'Sex'               => 'required|string',
-            'VisitorType'       => 'required|string', // New
+            'VisitorType'       => 'required|string', 
             'PurposeOfVisit'    => 'required|string',
-            'DepartmentToVisit' => 'required|string', // Dropdown/Custom text from frontend
-            'PersonToVisit'     => 'nullable|string|max:255', // New optional
+            'DepartmentToVisit' => 'required|string', 
+            'PersonToVisit'     => 'nullable|string|max:255', 
             'ContactNumber'     => 'nullable|string|max:20',
-            'Email'             => 'nullable|email|max:255', // New optional
+            'Email'             => 'nullable|email|max:255', 
             'photos'            => 'array', 
         ]);
 
@@ -221,14 +222,14 @@ class VisitorController extends Controller
             // Create Visitor (Updated with new fields)
             $visitor = Visitor::create([
                 'FirstName'     => $validated['FirstName'],
-                'MiddleName'    => $request->MiddleName ?? '', // Save Middle Name
+                'MiddleName'    => $request->MiddleName ?? '', 
                 'Surname'       => $validated['Surname'],
                 'Age'           => $request->Age,
                 'Sex'           => $request->Sex,
-                'VisitorType'   => $validated['VisitorType'],   // e.g. Contractor
-                'AffiliationType' => 'Visitor',                 // Legacy field (default)
+                'VisitorType'   => $validated['VisitorType'],   
+                'AffiliationType' => 'Visitor',                 
                 'ContactNumber' => $request->ContactNumber ?? null,
-                'Email'         => $request->Email ?? null,     // Save Email
+                'Email'         => $request->Email ?? null,    
             ]);
 
             // 🛑 AI ACTION: Validate & Train
@@ -252,8 +253,8 @@ class VisitorController extends Controller
             'VisitorID'           => $visitor->VisitorID,
             'EntryTimestamp'      => now(),
             'PurposeOfVisit'      => $validated['PurposeOfVisit'],
-            'PersonToVisit'       => $request->PersonToVisit ?? null, // Save Person
-            'DepartmentToVisit'   => $validated['DepartmentToVisit'], // Save Dept
+            'PersonToVisit'       => $request->PersonToVisit ?? null, 
+            'DepartmentToVisit'   => $validated['DepartmentToVisit'], 
             'PrivacyConsentGiven' => true,
             'Status'              => 'Active',
             'IsFlagged'           => $isFlagged 
@@ -291,10 +292,22 @@ class VisitorController extends Controller
         return response()->json(Visitor::with('logs')->orderBy('created_at', 'desc')->get());
     }
     
+    // 🚪 FORCE CHECKOUT (With Audit Trail)
     public function checkout(Request $request) {
         $log = VisitLog::find($request->log_id);
         if (!$log || $log->ExitTimestamp) return response()->json(['message' => 'Error'], 400);
+        
         $log->update(['ExitTimestamp' => now(), 'Status' => 'Completed']);
+
+        // 📝 RECORD AUDIT LOG
+        SecurityLog::create([
+            'VisitorID' => $log->VisitorID,
+            'LogID'     => $log->LogID,
+            'Action'    => 'FORCE_EXIT',
+            'Reason'    => 'Admin Forced Checkout',
+            'Officer'   => 'Admin'
+        ]);
+
         return response()->json(['message' => 'Checked out']);
     }
 
@@ -305,49 +318,67 @@ class VisitorController extends Controller
         return response()->json(['message' => 'Status updated']);
     }
 
+    // 🔍 SHOW FUNCTION (Includes Security History)
     public function show($id)
     {
-        $visitor = Visitor::with(['logs' => function($query) {
-            $query->orderBy('EntryTimestamp', 'desc');
-        }])->find($id);
+        $visitor = Visitor::with([
+            'logs' => function($query) { $query->orderBy('EntryTimestamp', 'desc'); },
+            'securityLogs' => function($query) { $query->orderBy('created_at', 'desc'); } // 👈 NEW
+        ])->find($id);
+
         if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);
         return response()->json($visitor);
     }
 
-    // 🚫 BAN FUNCTION
+    // 🚫 BAN / UNBAN FUNCTION (With Audit Trail)
     public function toggleWatchlist(Request $request, $id)
     {
         $visitor = Visitor::find($id);
         if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);
 
-        if ($visitor->IsWatchlisted) {
+        $previousState = $visitor->IsWatchlisted;
+        
+        // 1. Toggle State
+        if ($previousState) {
+            // UNBAN
             $visitor->IsWatchlisted = false;
             $visitor->WatchlistReason = null;
+            $action = 'UNBAN';
+            $reason = 'Manual Unban';
         } else {
+            // BAN
             $visitor->IsWatchlisted = true;
             $visitor->WatchlistReason = $request->input('reason', 'Manual Ban');
+            $action = 'BAN';
+            $reason = $visitor->WatchlistReason;
         }
         $visitor->save();
 
+        // 2. 📝 RECORD AUDIT LOG
+        SecurityLog::create([
+            'VisitorID' => $visitor->VisitorID,
+            'Action'    => $action,
+            'Reason'    => $reason,
+            'Officer'   => 'Admin' 
+        ]);
+
         return response()->json([
             'state' => $visitor->IsWatchlisted,
-            'message' => $visitor->IsWatchlisted ? 'Banned' : 'Unbanned'
+            'message' => $action === 'BAN' ? 'User Banned' : 'User Unbanned'
         ]);
     }
 
-    // 🚩 AI FLAG TOGGLE (Red)
+    // 🚩 AI FLAG TOGGLE (Red) - (Simple Toggle, mostly internal)
     public function toggleFlag(Request $request, $id)
     {
         $log = VisitLog::find($id);
         if (!$log) return response()->json(['message' => 'Log not found'], 404);
 
         if ($log->IsFlagged) {
-            // Unflag
             $log->IsFlagged = false;
             $log->FlagReason = null;
             $message = 'Flag removed.';
         } else {
-            // Flag
             $log->IsFlagged = true;
             $log->FlagReason = $request->input('reason', 'Manual Suspicion');
             $message = 'Entry flagged as suspicious.';
@@ -361,31 +392,40 @@ class VisitorController extends Controller
         ]);
     }
 
-    // ------------------------------------------------------------------
-    // 👮‍♂️ MANUAL FLAG (Yellow - Officer Discretion)
-    // ------------------------------------------------------------------
+    // 👮‍♂️ MANUAL FLAG (With Audit Trail)
     public function toggleManualFlag(Request $request, $id)
     {
         $log = VisitLog::find($id);
         if (!$log) return response()->json(['message' => 'Log not found'], 404);
 
         if ($log->IsManualFlag) {
-            // Unflag
+            // UNFLAG
             $log->IsManualFlag = false;
             $log->ManualFlagReason = null;
-            $message = 'Manual flag removed.';
+            $action = 'UNFLAG';
+            $reason = 'Flag Removed';
         } else {
-            // Flag
+            // FLAG
             $log->IsManualFlag = true;
             $log->ManualFlagReason = $request->input('reason', 'Officer Discretion');
-            $message = 'Visitor manually flagged.';
+            $action = 'FLAG';
+            $reason = $log->ManualFlagReason;
         }
         $log->save();
 
+        // 2. 📝 RECORD AUDIT LOG
+        SecurityLog::create([
+            'VisitorID' => $log->VisitorID,
+            'LogID'     => $log->LogID,
+            'Action'    => $action,
+            'Reason'    => $reason,
+            'Officer'   => 'Admin'
+        ]);
+
         return response()->json([
-            'message' => $message,
-            'is_manual_flag' => (bool)$log->IsManualFlag, // Casting to bool ensures frontend gets true/false
+            'message' => $action === 'FLAG' ? 'Flagged' : 'Unflagged',
+            'is_manual_flag' => (bool)$log->IsManualFlag,
             'reason' => $log->ManualFlagReason
         ]);
     }
-} // <--- End of Class
+}

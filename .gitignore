@@ -40,3 +40,8 @@ temp_recognition_*.jpg
 Thumbs.db
 .vscode/
 *.whl
+
+node_modules/
+backend/vendor/
+backend/storage/*.key
+.env

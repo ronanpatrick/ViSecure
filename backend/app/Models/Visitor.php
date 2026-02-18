@@ -9,40 +9,39 @@ class Visitor extends Model
 {
     use HasFactory;
 
-    // We tell Laravel your primary key is 'VisitorID', not standard 'id'
     protected $primaryKey = 'VisitorID';
 
-    // 1. UPDATE: Replace FullName with new fields
     protected $fillable = [
         'FirstName', 
-        'MiddleName', // 👈 Changed from Initial to Name
+        'MiddleName',
         'Surname', 
         'Age', 
         'Sex', 
-        'VisitorType', // 👈 New
+        'VisitorType', 
         'AffiliationType', 
         'ContactNumber', 
-        'Email', // 👈 New
+        'Email',
         'Status', 
         'IsWatchlisted', 
         'WatchlistReason'
     ];
 
-    // 2. MAGIC: Automatically add 'FullName' to JSON responses
     protected $appends = ['FullName'];
 
-    // 3. LOGIC: Glue the names together when asked
     public function getFullNameAttribute()
     {
-        // Example: "Patrick G. Miralion" or "Patrick Miralion"
-        $mi = $this->MiddleInitial ? $this->MiddleInitial . '.' : '';
+        $mi = $this->MiddleName ? $this->MiddleName[0] . '.' : ''; // Fixed to take just the first letter
         return trim("{$this->FirstName} {$mi} {$this->Surname}");
     }
 
-    // Link to the Visit Logs table
     public function logs()
     {
-        // A visitor can have multiple logs (visits)
         return $this->hasMany(VisitLog::class, 'VisitorID', 'VisitorID');
+    }
+
+    // 👇 ADD THIS NEW RELATIONSHIP 👇
+    public function securityLogs()
+    {
+        return $this->hasMany(SecurityLog::class, 'VisitorID', 'VisitorID');
     }
 }
