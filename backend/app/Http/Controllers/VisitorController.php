@@ -21,15 +21,17 @@ class VisitorController extends Controller
     // ------------------------------------------------------------------
     // 📊 ANALYTICS ENDPOINT (Updated to use Python AI Engine)
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // 📊 ANALYTICS ENDPOINT (Cleaned: Removed Suspicious Table Logic)
+    // ------------------------------------------------------------------
     public function getAnalytics(Request $request)
     {
         try {
             // 1. DETERMINE DATE FILTER
             $period = $request->query('period', 'today'); 
             $now = Carbon::now();
-            $startDate = null; // If null, means "All Time"
+            $startDate = null; 
 
-            // Set the start date based on the selected period
             switch ($period) {
                 case 'today':      $startDate = $now->copy()->startOfDay(); break;
                 case 'yesterday':  $startDate = $now->copy()->subDay()->startOfDay(); break; 
@@ -42,17 +44,11 @@ class VisitorController extends Controller
                 default:           $startDate = $now->copy()->startOfDay();
             }
 
-            // HELPER: Function to apply date filter to any query
             $applyDate = function($query, $column = 'EntryTimestamp') use ($period, $startDate) {
                 if ($period === 'all_time') return;
-                
-                if ($period === 'today') {
-                    $query->whereDate($column, Carbon::today());
-                } elseif ($period === 'yesterday') {
-                    $query->whereDate($column, Carbon::yesterday());
-                } else {
-                    $query->where($column, '>=', $startDate);
-                }
+                if ($period === 'today') $query->whereDate($column, Carbon::today());
+                elseif ($period === 'yesterday') $query->whereDate($column, Carbon::yesterday());
+                else $query->where($column, '>=', $startDate);
             };
 
             // 2. HEADLINE STATS
@@ -60,7 +56,6 @@ class VisitorController extends Controller
             $applyDate($totalQuery);
             $totalVisits = $totalQuery->count();
 
-            // "Active" is ALWAYS "Right now", regardless of history filter
             $activeVisitors = DB::table('visit_logs')->whereNull('ExitTimestamp')->count();
 
             $bannedQuery = DB::table('visit_logs')
@@ -69,7 +64,7 @@ class VisitorController extends Controller
             $applyDate($bannedQuery, 'visit_logs.EntryTimestamp');
             $bannedAttempts = $bannedQuery->count();
 
-            // 3. PEAK HOURS (Hourly Distribution)
+            // 3. PEAK HOURS
             $peakQuery = DB::table('visit_logs')
                 ->select(DB::raw('HOUR(EntryTimestamp) as hour'), DB::raw('count(*) as count'));
             $applyDate($peakQuery);
@@ -110,45 +105,10 @@ class VisitorController extends Controller
             $ageGroups = $ageQuery->groupBy('age_range')->get();
 
             // ---------------------------------------------------------
-            // 🕵️‍♂️ 7. SUSPICIOUS ACTIVITY (UPDATED: Now uses Python NLP)
-            // ---------------------------------------------------------
-            
-            // A. Fetch the last 50 visits (We audit them in real-time)
-            $recentLogs = DB::table('visit_logs')
-                ->join('visitors', 'visit_logs.VisitorID', '=', 'visitors.VisitorID')
-                ->select(
-                    DB::raw("CONCAT(visitors.FirstName, ' ', visitors.Surname) as FullName"), 
-                    'visit_logs.PurposeOfVisit', 
-                    'visit_logs.EntryTimestamp'
-                )
-                ->orderBy('visit_logs.EntryTimestamp', 'desc')
-                ->limit(50) // Optimization: Only check the most recent 50
-                ->get();
-
-            $suspiciousLogs = [];
-
-            // B. Run each log through the AI
-            foreach ($recentLogs as $log) {
-                // Ask AIService
-                $aiResult = $this->aiService->checkPurpose($log->PurposeOfVisit);
-                
-                if ($aiResult['is_suspicious']) {
-                    // Add the "Confidence Score" so we can show it in the UI if we want
-                    $log->confidence = $aiResult['confidence']; 
-                    $suspiciousLogs[] = $log;
-                }
-
-                // Limit: Only show top 10 suspicious to keep dashboard clean
-                if (count($suspiciousLogs) >= 10) break; 
-            }
-
-            // ---------------------------------------------------------
-            // 🤖 8. PREDICTION (UPDATED: Now uses Python AI Engine)
+            // 🤖 8. PREDICTION (Keep this!)
             // ---------------------------------------------------------
             $predicted = [];
-            
             if ($period === 'today') {
-                // Instead of PHP math, we now ask the Python Engine via AIService
                 $predicted = $this->aiService->predictHourlyTraffic();
             }
 
@@ -161,8 +121,8 @@ class VisitorController extends Controller
                 'peak_hours' => $peakHours,
                 'predicted_hours' => $predicted,
                 'departments' => $departments,
-                'demographics' => ['sex' => $sexDistribution, 'age' => $ageGroups],
-                'suspicious' => $suspiciousLogs
+                'demographics' => ['sex' => $sexDistribution, 'age' => $ageGroups]
+                // ❌ REMOVED: 'suspicious' => $suspiciousLogs
             ]);
 
         } catch (\Exception $e) {
@@ -172,7 +132,7 @@ class VisitorController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // EXISTING FUNCTIONS (UNCHANGED)
+    // STORE FUNCTION (UPDATED: Saves IsFlagged to Database)
     // ------------------------------------------------------------------
 
     public function store(Request $request)
@@ -249,7 +209,13 @@ class VisitorController extends Controller
             }
         } 
         
-        // 3. Create Visit Log
+        // ---------------------------------------------------------
+        // 🧠 AI CHECK: Ask Python if the purpose is suspicious
+        // ---------------------------------------------------------
+        $aiCheck = $this->aiService->checkPurpose($validated['PurposeOfVisit']);
+        $isFlagged = $aiCheck['is_suspicious']; // True or False
+
+        // 3. Create Visit Log (WITH FLAG)
         $log = VisitLog::create([
             'VisitorID' => $visitor->VisitorID,
             'EntryTimestamp' => now(),
@@ -257,7 +223,8 @@ class VisitorController extends Controller
             'PersonToVisit' => $request->PersonToVisit ?? null,
             'DepartmentToVisit' => $request->DepartmentToVisit ?? 'General',
             'PrivacyConsentGiven' => true,
-            'Status' => 'Active'
+            'Status' => 'Active',
+            'IsFlagged' => $isFlagged // 👈 SAVING THE AI DECISION
         ]);
 
         return response()->json([
@@ -267,7 +234,9 @@ class VisitorController extends Controller
             'watchlist_warning' => $visitor->IsWatchlisted ?? false, 
             'watchlist_reason' => $visitor->WatchlistReason ?? null,
             'visitor_id' => $visitor->VisitorID,
-            'log_id' => $log->id 
+            'log_id' => $log->id,
+            'is_flagged' => $isFlagged, // 👈 Tell Frontend immediately
+            'warning_message' => $isFlagged ? "⚠️ Monitor: Purpose flagged as suspicious." : null
         ], 201);
     }
 

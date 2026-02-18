@@ -217,53 +217,6 @@ export default function AnalyticsDashboard() {
                 </div>
 
             </div>
-
-            {/* 🕵️‍♂️ SUSPICIOUS ACTIVITY AUDIT */}
-            <div style={{ marginTop: '20px', ...chartBoxStyle }}>
-                <h3 style={chartTitleStyle}>
-                    🕵️‍♂️ Security Audit: Vague Entries {period !== 'today' && '(Top 10 of Period)'}
-                </h3>
-                {data.suspicious && data.suspicious.length > 0 ? (
-                    <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '2px solid #f3f4f6', color: '#9ca3af', textAlign: 'left' }}>
-                                <th style={{ padding: '8px' }}>Visitor Name</th>
-                                <th style={{ padding: '8px' }}>Logged Purpose</th>
-                                <th style={{ padding: '8px' }}>Time</th>
-                                <th style={{ padding: '8px' }}>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.suspicious.map((log, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid #f9fafb' }}>
-                                    <td style={{ padding: '10px', fontWeight: 'bold' }}>{log.FullName}</td>
-                                    <td style={{ padding: '10px' }}>
-                                        <span style={{ 
-                                            backgroundColor: '#fee2e2', color: '#991b1b', 
-                                            padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' 
-                                        }}>
-                                            "{log.PurposeOfVisit}"
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '10px', color: '#6b7280' }}>
-                                        {new Date(log.EntryTimestamp).toLocaleDateString()} {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </td>
-                                    <td style={{ padding: '10px' }}>
-                                        <button style={{ border: 'none', background: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: '12px' }}>
-                                            Review
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                ) : (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#10b981', backgroundColor: '#ecfdf5', borderRadius: '8px' }}>
-                        ✅ No vague or suspicious entries detected in this period.
-                    </div>
-                )}
-            </div>
-
         </div>
     );
 }

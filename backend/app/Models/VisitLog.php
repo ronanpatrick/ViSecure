@@ -24,6 +24,7 @@ class VisitLog extends Model
         'PersonToVisit',
         'DepartmentToVisit',
         'PrivacyConsentGiven',
+        'IsFlagged' // 👈 ADD THIS LINE!
         // Add any other columns you are saving
     ];
 

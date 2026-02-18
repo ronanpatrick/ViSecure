@@ -11,22 +11,34 @@ export default function LiveDashboard() {
     // 1. POLLING DATA
     const fetchData = async () => {
         try {
+            // 1. First, fetch the data
             const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/live-monitor`);
+            
+            // 2. NOW 'response' exists, so we can check it
             if (response.data.success) {
+                
+                // 🔍 DEBUG LOG: Check this in your browser console!
+                // It will show you exactly what the database is sending for the first visitor.
+                if (response.data.data.length > 0) {
+                     console.log("🔍 DEBUG DATA (First Visitor):", response.data.data[0]); 
+                }
+
                 setVisitors(response.data.data);
                 setOccupancy(response.data.occupancy);
                 
                 // GENERATE ALERTS
                 const newAlerts = response.data.data.map(v => {
                     const isWatchlisted = v.visitor?.IsWatchlisted === 1 || v.visitor?.IsWatchlisted === true; 
-                    const isSuspicious = isSuspiciousPurpose(v.PurposeOfVisit);
                     
-                    // Default: Green (Success)
+                    // 🧠 AI CHECK: IsFlagged comes from the database
+                    const isFlagged = v.IsFlagged === 1 || v.IsFlagged === true; 
+                    
+                    // Default: Green
                     let type = 'success';
                     let msg = `${v.visitor?.FullName} entered`;
 
                     // 🔴 PRIORITY 1: Suspicious (RED)
-                    if (isSuspicious) {
+                    if (isFlagged) {
                         type = 'danger';
                         msg = `❓ SUSPICIOUS: ${v.visitor?.FullName} (${v.PurposeOfVisit})`;
                     } 
@@ -44,7 +56,6 @@ export default function LiveDashboard() {
                     };
                 });
                 
-                // Keep the last 10 alerts
                 setAlerts(newAlerts.slice(0, 10));
             }
         } catch (error) {
@@ -58,34 +69,28 @@ export default function LiveDashboard() {
         return () => clearInterval(interval);
     }, []);
 
-    // 2. HELPER: Check for Suspicious Purpose
-    const isSuspiciousPurpose = (purpose) => {
-        if (!purpose) return true;
-        const lower = purpose.toLowerCase();
-        const vagueWords = ['stuff', 'unknown', 'n/a', 'visiting', 'none', 'just looking', '.'];
-        return vagueWords.some(word => lower.includes(word));
-    };
-
-    // 3. HELPER: Get Row Color based on status
+    // 2. HELPER: Get Row Color based on status
     const getRowStyle = (log) => {
         const hoursInside = (currentTime - new Date(log.EntryTimestamp)) / 1000 / 3600;
         const isWatchlisted = log.visitor?.IsWatchlisted === 1 || log.visitor?.IsWatchlisted === true;
-        const isSuspicious = isSuspiciousPurpose(log.PurposeOfVisit);
+        
+        // 🧠 AI CHECK: Use database flag
+        const isFlagged = log.IsFlagged === 1 || log.IsFlagged === true;
 
         // 🔴 PRIORITY 1: Suspicious Purpose -> RED
-        if (isSuspicious) return { backgroundColor: '#fee2e2' }; 
+        if (isFlagged) return { backgroundColor: '#fee2e2', borderLeft: '4px solid #ef4444' }; 
 
         // 🔴 PRIORITY 2: Overstay (> 4 Hours) -> RED
-        if (hoursInside > 4) return { backgroundColor: '#fee2e2' };
+        if (hoursInside > 4) return { backgroundColor: '#fee2e2', borderLeft: '4px solid #ef4444' };
 
         // 🟡 PRIORITY 3: Watchlist Flag -> YELLOW
-        if (isWatchlisted) return { backgroundColor: '#fef08a' }; 
+        if (isWatchlisted) return { backgroundColor: '#fef08a', borderLeft: '4px solid #eab308' }; 
 
         // ⚪ Default
-        return { backgroundColor: 'white' };
+        return { backgroundColor: 'white', borderLeft: '4px solid transparent' };
     };
 
-    // 4. FORCE CHECKOUT
+    // 3. FORCE CHECKOUT
     const handleForceCheckout = async (logId) => {
         if (!window.confirm("Confirm: Force exit this visitor?")) return;
         try {
@@ -96,7 +101,7 @@ export default function LiveDashboard() {
         }
     };
 
-    // 5. TICKER
+    // 4. TICKER
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
@@ -116,9 +121,9 @@ export default function LiveDashboard() {
     const pageGrid = { display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '20px', height: '80vh' };
     const mainPanel = { backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflowY: 'auto' };
     const sidePanel = { backgroundColor: '#1f2937', borderRadius: '12px', padding: '20px', color: 'white', display: 'flex', flexDirection: 'column' };
-    const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '14px' };
+    const tableStyle = { width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', fontSize: '14px' };
     const thStyle = { textAlign: 'left', padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280' };
-    const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6' };
+    const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'middle' };
 
     return (
         <div className="fade-in" style={pageGrid}>
@@ -128,7 +133,7 @@ export default function LiveDashboard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                     <div>
                         <h2 style={{ margin: 0 }}>👁️ Live Monitor</h2>
-                        <span style={{ color: '#6b7280', fontSize: '14px' }}>Real-time visitor tracking</span>
+                        <span style={{ color: '#6b7280', fontSize: '14px' }}>Real-time AI surveillance</span>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '32px', fontWeight: 'bold', color: occupancy > capacity ? '#ef4444' : '#10b981' }}>
@@ -155,7 +160,7 @@ export default function LiveDashboard() {
                         ) : (
                             visitors.map(log => {
                                 const rowStyle = getRowStyle(log);
-                                const isSuspicious = isSuspiciousPurpose(log.PurposeOfVisit);
+                                const isFlagged = log.IsFlagged === 1 || log.IsFlagged === true;
                                 const isWatchlisted = log.visitor?.IsWatchlisted === 1;
 
                                 return (
@@ -166,9 +171,10 @@ export default function LiveDashboard() {
                                         </td>
                                         
                                         <td style={tdStyle}>
-                                            {isSuspicious ? (
+                                            {isFlagged ? (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#b91c1c', fontWeight: 'bold' }}>
                                                     <span>❓ {log.PurposeOfVisit}</span>
+                                                    <span style={{fontSize:'9px', backgroundColor:'#b91c1c', color:'white', padding:'2px 4px', borderRadius:'4px'}}>AI FLAGGED</span>
                                                 </div>
                                             ) : (
                                                 <span>{log.PurposeOfVisit}</span>

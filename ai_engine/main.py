@@ -76,7 +76,9 @@ def train_nlp_model():
     suspicious_phrases = [
         "stuff", "idk", "none", "trip", "wala", "tambay", "gimik", "secret", "personal",
         "just looking", "waiting", "standby", "loitering", "meet friend", "chilling",
-        "passing by", "rest", "cr", "n/a", "unknown", "...", "no reason", "gala", "luh", "ewan"
+        "passing by", "rest", "cr", "n/a", "unknown", "...", "no reason", "gala", "luh", "ewan",
+        # 👇 ADD THESE EXACTLY AS YOU TYPE THEM
+        "test", "test lang", "try", "demo", "sample", "visiting", "just visiting" 
     ]
     suspicious_modifiers = ["lang", "only", "just", "sa loob", "dyan lang", "po", "daw"]
 
@@ -114,6 +116,11 @@ def check_purpose():
         
         # Get Confidence Score
         proba = nlp_model.predict_proba([purpose])[0][prediction]
+        
+        # 🕵️‍♂️ DEBUG PRINT: Show us what happened!
+        status = "🔴 SUSPICIOUS" if prediction == 1 else "🟢 SAFE"
+        print(f"🧐 ANALYZING: '{purpose}'")
+        print(f"   ↳ RESULT: {status} (Confidence: {round(proba * 100, 2)}%)")
 
         return jsonify({
             "purpose": purpose,
