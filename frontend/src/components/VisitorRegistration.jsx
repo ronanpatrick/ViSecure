@@ -26,6 +26,7 @@ export default function VisitorRegistration() {
     });
     
     const [customDepartment, setCustomDepartment] = useState(''); 
+    const [customVisitorType, setCustomVisitorType] = useState('');
     const [successData, setSuccessData] = useState(null);
     const [photos, setPhotos] = useState([]); 
     const [message, setMessage] = useState('');
@@ -107,6 +108,7 @@ export default function VisitorRegistration() {
         setMessage(''); setError('');
 
         const finalDepartment = formData.DepartmentToVisit === 'Others' ? customDepartment : formData.DepartmentToVisit;
+        const finalVisitorType = formData.VisitorType === 'Others' ? customVisitorType : formData.VisitorType; // 👈 Add this
         if (formData.DepartmentToVisit === 'Others' && !customDepartment.trim()) {
             setError("Please specify the department."); return;
         }
@@ -116,7 +118,13 @@ export default function VisitorRegistration() {
             let processedPhotos = [];
             if (step === 2) processedPhotos = await Promise.all(photos.map(p => resizeBase64(p)));
 
-            const payload = { ...formData, DepartmentToVisit: finalDepartment, photos: processedPhotos };
+            const payload = { 
+                ...formData, 
+                DepartmentToVisit: finalDepartment, 
+                VisitorType: finalVisitorType, // 👈 Override the type here
+                photos: processedPhotos 
+            };
+            
             const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/register`, payload);
             
             const idToSave = response.data.log_id || response.data.visitor_id;
@@ -141,16 +149,27 @@ export default function VisitorRegistration() {
         }
     };
 
-    // --- STYLES ---
-    const colors = { primary: '#2c3e50', accent: '#34495e', success: '#27ae60', background: '#f8f9fa', card: '#ffffff', border: '#e9ecef', text: '#212529', subtext: '#6c757d' };
-    const pageStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', width: '100vw', backgroundColor: colors.background, fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif" };
-    const containerStyle = { width: '100%', maxWidth: '600px', padding: '40px', backgroundColor: colors.card, boxShadow: '0 2px 15px rgba(0,0,0,0.05)', borderRadius: '8px', border: `1px solid ${colors.border}` };
-    const headerStyle = { textAlign: 'center', marginBottom: '30px', color: colors.primary, fontSize: '24px', fontWeight: '600', letterSpacing: '-0.5px' };
-    const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: '600', color: colors.subtext, textTransform: 'uppercase', letterSpacing: '0.5px' };
-    const inputStyle = { width: '100%', padding: '10px 12px', marginBottom: '15px', borderRadius: '4px', border: `1px solid ${colors.border}`, backgroundColor: '#fff', fontSize: '14px', color: colors.text, outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box' };
-    const buttonStyle = { width: '100%', padding: '14px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase', letterSpacing: '1px', transition: 'background 0.2s' };
-    const secondaryButtonStyle = { ...buttonStyle, backgroundColor: 'transparent', color: colors.subtext, border: `1px solid ${colors.border}` };
-    const rowStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' };
+    // --- STYLES (2026 UI/UX Standard) ---
+    const colors = { primary: '#0f172a', accent: '#3b82f6', success: '#10b981', background: '#f8fafc', card: '#ffffff', border: '#e2e8f0', text: '#334155', subtext: '#64748b' };
+    const pageStyle = { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', width: '100vw', backgroundColor: colors.background, fontFamily: "'Inter', 'Segoe UI', Roboto, sans-serif", padding: '20px', boxSizing: 'border-box' };
+    const containerStyle = { width: '100%', maxWidth: '550px', padding: '35px', backgroundColor: colors.card, boxShadow: '0 10px 25px rgba(0,0,0,0.05)', borderRadius: '16px', border: `1px solid ${colors.border}` };
+    const headerStyle = { textAlign: 'center', marginBottom: '30px', color: colors.primary, fontSize: '26px', fontWeight: '700', letterSpacing: '-0.5px' };
+    
+    // Modern Labels & Inputs
+    const sectionTitleStyle = { fontSize: '16px', fontWeight: '600', color: colors.primary, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' };
+    const labelContainerStyle = { display: 'flex', justifyContent: 'space-between', marginBottom: '6px' };
+    const labelStyle = { fontSize: '13px', fontWeight: '600', color: colors.text };
+    const optionalStyle = { fontSize: '12px', fontWeight: '500', color: '#94a3b8' };
+    const inputStyle = { width: '100%', padding: '12px 14px', marginBottom: '18px', borderRadius: '8px', border: `1.5px solid ${colors.border}`, backgroundColor: '#f8fafc', fontSize: '15px', color: colors.primary, outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' };
+    const nameInputStyle = { ...inputStyle, textTransform: 'capitalize' };
+    const textAreaStyle = { ...inputStyle, minHeight: '80px', resize: 'vertical' };
+    
+    const buttonStyle = { width: '100%', padding: '14px', backgroundColor: colors.primary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', transition: 'background 0.2s', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' };
+    const secondaryButtonStyle = { ...buttonStyle, backgroundColor: 'white', color: colors.text, border: `1.5px solid ${colors.border}`, boxShadow: 'none' };
+    
+    // Responsive Grids
+    const grid2Col = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0 15px' };
+    const grid3Col = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0 15px' };
 
     return (
         <div style={pageStyle}>
@@ -169,46 +188,95 @@ export default function VisitorRegistration() {
                     </div>
                 )}
 
-                {/* --- STEP 1: FORM --- */}
+                {/* --- STEP 1: NEW REGISTRATION FORM --- */}
                 {step === 1 && (
                     <form className="fade-in" onSubmit={(e) => { e.preventDefault(); setStep(2); }}>
-                         <div style={{ marginBottom: '20px', borderBottom: `1px solid ${colors.border}`, paddingBottom: '10px' }}>
-                            <span style={{ fontSize: '18px', fontWeight: '500', color: colors.primary }}>Visitor Details</span>
-                         </div>
-                         
-                         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1.5fr', gap: '10px' }}>
-                            <div><label style={labelStyle}>First Name</label><input type="text" name="FirstName" value={formData.FirstName} onChange={handleChange} required style={inputStyle} /></div>
-                            <div><label style={labelStyle}>Mid Name</label><input type="text" name="MiddleName" value={formData.MiddleName} onChange={handleChange} style={inputStyle} /></div>
-                            <div><label style={labelStyle}>Last Name</label><input type="text" name="Surname" value={formData.Surname} onChange={handleChange} required style={inputStyle} /></div>
+                        
+                        {/* SECTION 1: PERSONAL INFO */}
+                        <div style={{ marginBottom: '25px' }}>
+                            <div style={sectionTitleStyle}><span style={{color: colors.accent}}>1.</span> Personal Information</div>
+                            
+                            <div style={grid3Col}>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>First Name</label></div>
+                                    <input type="text" name="FirstName" value={formData.FirstName} onChange={handleChange} required style={nameInputStyle} placeholder="Juan" autoCapitalize="words" autoComplete="given-name" />
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Middle Name</label></div>
+                                    <input type="text" name="MiddleName" value={formData.MiddleName} onChange={handleChange} required style={nameInputStyle} placeholder="G." autoCapitalize="words" autoComplete="additional-name" />
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Last Name</label></div>
+                                    <input type="text" name="Surname" value={formData.Surname} onChange={handleChange} required style={nameInputStyle} placeholder="Dela Cruz" autoCapitalize="words" autoComplete="family-name" />
+                                </div>
+                            </div>
+
+                            <div style={grid3Col}>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Age</label></div>
+                                    <input type="number" name="Age" value={formData.Age} onChange={handleChange} required style={inputStyle} placeholder="21" />
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Sex</label></div>
+                                    <select name="Sex" value={formData.Sex} onChange={handleChange} required style={{...inputStyle, padding: '11px 14px'}}>
+                                        <option value="" disabled>Select...</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Visitor Type</label></div>
+                                    <select name="VisitorType" value={formData.VisitorType} onChange={handleChange} style={{...inputStyle, padding: '11px 14px'}}>
+                                        {visitorTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                        <option value="Others">Others</option>
+                                    </select>
+                                    {formData.VisitorType === 'Others' && (
+                                        <input type="text" value={customVisitorType} onChange={(e) => setCustomVisitorType(e.target.value)} placeholder="Please specify..." style={{...inputStyle, marginTop:'-10px', borderColor: colors.accent}} required autoFocus />
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={grid2Col}>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Contact No.</label> <span style={optionalStyle}>(Optional)</span></div>
+                                    <input type="tel" name="ContactNumber" value={formData.ContactNumber} onChange={handleChange} style={inputStyle} placeholder="09XX XXX XXXX" autoComplete="tel" />
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Email Address</label> <span style={optionalStyle}>(Optional)</span></div>
+                                    <input type="email" name="Email" value={formData.Email} onChange={handleChange} style={inputStyle} placeholder="juan@example.com" autoComplete="email" />
+                                </div>
+                            </div>
                         </div>
 
-                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: '10px' }}>
-                            <div><label style={labelStyle}>Age</label><input type="number" name="Age" value={formData.Age} onChange={handleChange} required style={inputStyle} /></div>
-                            <div><label style={labelStyle}>Sex</label><select name="Sex" value={formData.Sex} onChange={handleChange} required style={{...inputStyle, height: '42px'}}><option value="">Select...</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
-                            <div><label style={labelStyle}>Type</label><select name="VisitorType" value={formData.VisitorType} onChange={handleChange} style={{...inputStyle, height: '42px'}}>{visitorTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                         </div>
+                        <hr style={{border:'0', borderTop:`1px solid ${colors.border}`, margin:'0 0 25px 0'}}/>
 
-                         <div style={rowStyle}>
-                            <div><label style={labelStyle}>Contact No.</label><input type="text" name="ContactNumber" value={formData.ContactNumber} onChange={handleChange} style={inputStyle} /></div>
-                            <div><label style={labelStyle}>Email</label><input type="email" name="Email" value={formData.Email} onChange={handleChange} style={inputStyle} /></div>
-                         </div>
+                        {/* SECTION 2: VISIT DETAILS */}
+                        <div style={{ marginBottom: '10px' }}>
+                            <div style={sectionTitleStyle}><span style={{color: colors.accent}}>2.</span> Visit Details</div>
+                            
+                            <div style={grid2Col}>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Department</label></div>
+                                    <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, padding: '11px 14px'}}>
+                                        <option value="" disabled>Select Department...</option>
+                                        {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                    {formData.DepartmentToVisit === 'Others' && (
+                                        <input type="text" value={customDepartment} onChange={(e) => setCustomDepartment(e.target.value)} placeholder="Please specify..." style={{...inputStyle, marginTop:'-10px', borderColor: colors.accent}} required autoFocus />
+                                    )}
+                                </div>
+                                <div>
+                                    <div style={labelContainerStyle}><label style={labelStyle}>Person to Visit</label> <span style={optionalStyle}>(Optional)</span></div>
+                                    <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} placeholder="Name of personnel..." />
+                                </div>
+                            </div>
 
-                         <hr style={{border:'0', borderTop:`1px solid ${colors.border}`, margin:'10px 0 20px 0'}}/>
+                            <div style={labelContainerStyle}><label style={labelStyle}>Purpose of Visit</label></div>
+                            <textarea name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={textAreaStyle} placeholder="Please briefly describe the reason for your visit..." />
+                        </div>
 
-                         <label style={labelStyle}>Purpose of Visit</label>
-                         <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} />
-                         
-                         <div style={rowStyle}>
-                             <div><label style={labelStyle}>Person to Visit</label><input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} /></div>
-                             <div>
-                                 <label style={labelStyle}>Department</label>
-                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '42px'}}><option value="">Select...</option>{departments.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                                 {formData.DepartmentToVisit === 'Others' && <input type="text" value={customDepartment} onChange={(e) => setCustomDepartment(e.target.value)} placeholder="Specify Dept..." style={{...inputStyle, marginTop:'-10px', backgroundColor: '#f0f9ff', borderColor: '#3b82f6'}} required />}
-                             </div>
-                         </div>
-
-                         <button type="submit" style={buttonStyle}>Continue</button>
-                         <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Back</button>
+                        <button type="submit" style={buttonStyle}>Proceed to Face Scan</button>
+                        <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Back to Start</button>
                     </form>
                 )}
 
@@ -236,26 +304,38 @@ export default function VisitorRegistration() {
                     </div>
                 )}
 
-                {/* --- STEP 5: UPDATE DETAILS (Returning User) --- */}
+                {/* --- STEP 5: RETURNING USER UPDATE --- */}
                 {step === 5 && (
                     <form className="fade-in" onSubmit={handleSubmit}>
-                        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                            <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Welcome Back</h2>
-                            <p style={{ fontSize: '14px', color: colors.subtext, margin: 0 }}>{formData.FirstName} {formData.Surname} ({formData.VisitorType})</p>
+                        <div style={{ textAlign: 'center', marginBottom: '30px', padding: '20px', backgroundColor: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+                            <h2 style={{ fontSize: '20px', margin: '0 0 5px 0', color: colors.primary }}>Identity Verified</h2>
+                            <p style={{ fontSize: '14px', color: colors.text, margin: 0, fontWeight: '500' }}>Welcome back, {formData.FirstName} {formData.Surname}</p>
                         </div>
-                        <label style={labelStyle}>New Purpose of Visit</label>
-                        <input type="text" name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={inputStyle} autoFocus />
                         
-                        <div style={rowStyle}>
-                             <div><label style={labelStyle}>Person to Visit</label><input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} /></div>
-                             <div>
-                                 <label style={labelStyle}>Department</label>
-                                 <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, height: '42px'}}><option value="">Select...</option>{departments.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                                 {formData.DepartmentToVisit === 'Others' && <input type="text" value={customDepartment} onChange={(e) => setCustomDepartment(e.target.value)} placeholder="Specify Dept..." style={{...inputStyle, marginTop:'-10px', backgroundColor: '#f0f9ff', borderColor: '#3b82f6'}} required />}
-                             </div>
-                         </div>
+                        <div style={sectionTitleStyle}><span style={{color: colors.accent}}>•</span> New Visit Details</div>
+
+                        <div style={grid2Col}>
+                            <div>
+                                <div style={labelContainerStyle}><label style={labelStyle}>Department</label></div>
+                                <select name="DepartmentToVisit" value={formData.DepartmentToVisit} onChange={handleChange} required style={{...inputStyle, padding: '11px 14px'}}>
+                                    <option value="" disabled>Select Department...</option>
+                                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                                {formData.DepartmentToVisit === 'Others' && (
+                                    <input type="text" value={customDepartment} onChange={(e) => setCustomDepartment(e.target.value)} placeholder="Please specify..." style={{...inputStyle, marginTop:'-10px', borderColor: colors.accent}} required autoFocus />
+                                )}
+                            </div>
+                            <div>
+                                <div style={labelContainerStyle}><label style={labelStyle}>Person to Visit</label> <span style={optionalStyle}>(Optional)</span></div>
+                                <input type="text" name="PersonToVisit" value={formData.PersonToVisit} onChange={handleChange} style={inputStyle} placeholder="Name of personnel..." />
+                            </div>
+                        </div>
+
+                        <div style={labelContainerStyle}><label style={labelStyle}>Purpose of Visit</label></div>
+                        <textarea name="PurposeOfVisit" value={formData.PurposeOfVisit} onChange={handleChange} required style={textAreaStyle} placeholder="Please briefly describe the reason for your visit today..." autoFocus />
+                        
                         <button type="submit" style={buttonStyle}>Confirm Entry</button>
-                        <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Back</button>
+                        <button type="button" onClick={handleBack} style={secondaryButtonStyle}>Cancel</button>
                     </form>
                 )}
 

@@ -275,21 +275,20 @@ class VisitorController extends Controller
                 }
             }
 
-            // Create Visitor (Updated with new fields)
+            // Create Visitor
             $visitor = Visitor::create([
-                'FirstName'     => $validated['FirstName'],
-                'MiddleName'    => $request->MiddleName ?? '', 
-                'Surname'       => $validated['Surname'],
+                'FirstName'       => ucwords(strtolower($validated['FirstName'])),
+                'MiddleName'      => ucwords(strtolower($request->MiddleName ?? '')), 
+                'Surname'         => ucwords(strtolower($validated['Surname'])),
+                'FullName'        => ucwords(strtolower(trim($validated['FirstName'] . ' ' . $validated['Surname']))), 
+                'Age'             => $request->Age,
+                'Sex'             => $request->Sex,
                 
-                // 🆕 ADD THIS LINE BELOW: Combine them for the DB requirement
-                'FullName'      => trim($validated['FirstName'] . ' ' . $validated['Surname']), 
+                'VisitorType'     => $validated['VisitorType'],   
+                'AffiliationType' => $validated['VisitorType'], // 👈 CHANGED THIS FROM 'Visitor'
                 
-                'Age'           => $request->Age,
-                'Sex'           => $request->Sex,
-                'VisitorType'   => $validated['VisitorType'],   
-                'AffiliationType' => 'Visitor',                 
-                'ContactNumber' => $request->ContactNumber ?? null,
-                'Email'         => $request->Email ?? null,    
+                'ContactNumber'   => $request->ContactNumber ?? null,
+                'Email'           => strtolower($request->Email ?? ''),
             ]);
 
             // 🛑 AI ACTION: Validate & Train

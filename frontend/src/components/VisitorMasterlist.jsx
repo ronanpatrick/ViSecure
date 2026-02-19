@@ -41,7 +41,8 @@ export default function VisitorMasterList() {
             const lowerTerm = searchTerm.toLowerCase();
             results = results.filter(v => 
                 v.FullName.toLowerCase().includes(lowerTerm) ||
-                (v.AffiliationType && v.AffiliationType.toLowerCase().includes(lowerTerm)) ||
+                // 👈 Updated to VisitorType
+                (v.VisitorType && v.VisitorType.toLowerCase().includes(lowerTerm)) ||
                 (v.ContactNumber && v.ContactNumber.toLowerCase().includes(lowerTerm)) ||
                 (v.Email && v.Email.toLowerCase().includes(lowerTerm)) ||
                 v.VisitorID.toString().includes(lowerTerm)
@@ -54,7 +55,8 @@ export default function VisitorMasterList() {
             else if (filterType === 'active') results = results.filter(v => v.Status === 'Active' && !v.IsWatchlisted);
         }
 
-        if (filters.affiliation !== 'All') results = results.filter(v => v.AffiliationType === filters.affiliation || v.VisitorType === filters.affiliation);
+        // 👈 Updated to VisitorType
+        if (filters.affiliation !== 'All') results = results.filter(v => v.VisitorType === filters.affiliation || v.AffiliationType === filters.affiliation);
         if (filters.regStart) results = results.filter(v => new Date(v.created_at) >= new Date(filters.regStart));
         if (filters.regEnd) {
             const endDate = new Date(filters.regEnd); endDate.setHours(23, 59, 59);
@@ -76,7 +78,8 @@ export default function VisitorMasterList() {
         results.sort((a, b) => {
             let aVal, bVal;
             if (sortConfig.key === 'FullName') { aVal = a.FullName.toLowerCase(); bVal = b.FullName.toLowerCase(); } 
-            else if (sortConfig.key === 'AffiliationType') { aVal = (a.AffiliationType || a.VisitorType || '').toLowerCase(); bVal = (b.AffiliationType || b.VisitorType || '').toLowerCase(); } 
+            // 👈 Updated to VisitorType
+            else if (sortConfig.key === 'VisitorType') { aVal = (a.VisitorType || a.AffiliationType || '').toLowerCase(); bVal = (b.VisitorType || b.AffiliationType || '').toLowerCase(); } 
             else if (sortConfig.key === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); } 
             else if (sortConfig.key === 'LastVisit') {
                 aVal = a.logs && a.logs.length > 0 ? Math.max(...a.logs.map(l => new Date(l.EntryTimestamp).getTime())) : 0;
@@ -88,7 +91,7 @@ export default function VisitorMasterList() {
         });
 
         setFilteredVisitors(results);
-        setCurrentPage(1); // 📄 Reset to page 1 whenever filters change!
+        setCurrentPage(1); 
     }, [searchTerm, filterType, filters, sortConfig, visitors]);
 
     // 📄 PAGINATION MATH
@@ -153,7 +156,8 @@ export default function VisitorMasterList() {
         setSearchTerm(''); setFilterType('all'); setSortConfig({ key: 'LastVisit', direction: 'desc' });
     };
     
-    const uniqueAffiliations = [...new Set(visitors.map(v => v.AffiliationType || v.VisitorType || 'Visitor'))];
+    // 👈 Updated to VisitorType
+    const uniqueAffiliations = [...new Set(visitors.map(v => v.VisitorType || v.AffiliationType || 'Visitor'))];
     const activeCount = visitors.filter(v => v.Status === 'Active' && !v.IsWatchlisted).length;
     const watchlistedCount = visitors.filter(v => Boolean(v.IsWatchlisted) && v.Status !== 'Banned').length;
     const bannedCount = visitors.filter(v => v.Status === 'Banned').length;
@@ -176,6 +180,7 @@ export default function VisitorMasterList() {
             <th style={{...styles.th, cursor: 'pointer', userSelect: 'none', backgroundColor: isActive ? '#f3f4f6' : '#f9fafb'}} onClick={() => requestSort(sortKey)} title={`Click to sort by ${label}`}>
                 <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
                     <span style={{ color: isActive ? '#111827' : '#6b7280' }}>{label}</span>
+                    {/* 👇 FIX: Added the missing " : '14px' " to the fontSize property below */}
                     <span style={{ color: isActive ? '#4f46e5' : '#d1d5db', fontWeight: isActive ? '900' : 'normal', fontSize: isActive ? '16px' : '14px', transition: 'all 0.2s' }}>
                         {isActive ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </span>
@@ -184,7 +189,7 @@ export default function VisitorMasterList() {
         );
     };
 
-    // --- 📥 EXPORTS LOGIC (Unchanged) ---
+    // --- 📥 EXPORTS LOGIC ---
     const downloadCSV = () => { /* Logic unchanged */ };
     const downloadPDF = () => { /* Logic unchanged */ };
     const downloadVisitorProfilePDF = () => { /* Logic unchanged */ };
@@ -301,7 +306,8 @@ export default function VisitorMasterList() {
                         <thead>
                             <tr>
                                 <SortableHeader label="Visitor Identity" sortKey="FullName" />
-                                <SortableHeader label="Classification" sortKey="AffiliationType" />
+                                {/* 👈 Updated sortKey to VisitorType */}
+                                <SortableHeader label="Classification" sortKey="VisitorType" />
                                 <th style={{...styles.th, cursor: 'default'}}>Clearance</th>
                                 <SortableHeader label="First Registered" sortKey="created_at" />
                                 <SortableHeader label="Last Visit" sortKey="LastVisit" />
@@ -310,7 +316,8 @@ export default function VisitorMasterList() {
                         <tbody>
                             {currentItems.length > 0 ? currentItems.map((visitor) => {
                                 const lastLog = visitor.logs && visitor.logs.length > 0 ? [...visitor.logs].sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0] : null;
-                                const displayClassification = visitor.AffiliationType || visitor.VisitorType || 'Visitor';
+                                // 👈 Updated to VisitorType first
+                                const displayClassification = visitor.VisitorType || visitor.AffiliationType || 'Visitor';
 
                                 return (
                                     <tr key={visitor.VisitorID} style={styles.row} onClick={() => handleRowClick(visitor)} title="Click to view full security profile" onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
@@ -382,10 +389,9 @@ export default function VisitorMasterList() {
                 </div>
             )}
             
-            {/* 4. MODAL (Unchanged) */}
+            {/* 4. MODAL */}
             {showModal && (
                 <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
-                    {/* The rest of your modal logic goes here... it works identically as before! */}
                     <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
                         <button style={styles.closeBtn} onClick={() => setShowModal(false)}>&times;</button>
                         
@@ -394,7 +400,8 @@ export default function VisitorMasterList() {
                                 {/* LEFT: PROFILE & ACTIONS */}
                                 <div style={{ flex: 1, borderRight: '1px solid #e5e7eb', paddingRight: '20px' }}>
                                     <h2 style={{ marginTop: 0, color: '#111827', marginBottom: '5px' }}>{selectedVisitor.FullName}</h2>
-                                    <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>ID: #{selectedVisitor.VisitorID} • {selectedVisitor.AffiliationType || selectedVisitor.VisitorType}</p>
+                                    {/* 👈 Updated Modal Profile Tag to VisitorType */}
+                                    <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>ID: #{selectedVisitor.VisitorID} • {selectedVisitor.VisitorType || selectedVisitor.AffiliationType || 'Visitor'}</p>
                                     
                                     <button onClick={downloadVisitorProfilePDF} style={{ marginTop: '15px', width: '100%', padding: '10px', background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', transition: 'all 0.2s', fontSize: '13px' }}>
                                         📥 Download Full Security Dossier
