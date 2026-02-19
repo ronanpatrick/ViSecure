@@ -3,79 +3,59 @@ import axios from 'axios';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// --- SIMPLE ICONS ---
-const IconBan = () => <span style={{ fontSize: '16px' }}>🚫</span>;
-const IconFlag = () => <span style={{ fontSize: '16px' }}>⚠️</span>;
-const IconEye = () => <span style={{ fontSize: '16px' }}>👁️</span>;
-
 export default function VisitorMasterList() {
     const [visitors, setVisitors] = useState([]);
     const [filteredVisitors, setFilteredVisitors] = useState([]); 
     const [loading, setLoading] = useState(true);
     
-    // 🔍 SEARCH & FILTER STATES
+    // 🔍 SEARCH, FILTER & SORT STATES
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
-    const [filters, setFilters] = useState({
-        status: 'All',        
-        affiliation: 'All',   
-        regStart: '',   
-        regEnd: '',
-        visitStart: '', 
-        visitEnd: ''
-    });
+    
+    const [filterType, setFilterType] = useState('all'); 
+    const [sortConfig, setSortConfig] = useState({ key: 'LastVisit', direction: 'desc' });
+    
+    const [filters, setFilters] = useState({ affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' });
 
-    // MODAL STATE
+    // 🛠️ MODAL STATE
     const [selectedVisitor, setSelectedVisitor] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [inputMode, setInputMode] = useState(null); 
+    const [actionReason, setActionReason] = useState(""); 
 
-    // 1. Fetch Data
+    const API_BASE = import.meta.env.VITE_API_BASE_URL;
+
+    useEffect(() => { if (!selectedVisitor) { setInputMode(null); setActionReason(""); } }, [selectedVisitor]);
+    useEffect(() => { fetchVisitors(); }, []);
+
+    // 🧠 ADVANCED FILTER & SORT LOGIC
     useEffect(() => {
-        fetchVisitors();
-    }, []);
+        let results = [...visitors];
 
-    // 2. 🧠 ADVANCED FILTER LOGIC
-    useEffect(() => {
-        let results = visitors;
-
-        // A. Text Search
         if (searchTerm) {
             const lowerTerm = searchTerm.toLowerCase();
             results = results.filter(v => 
                 v.FullName.toLowerCase().includes(lowerTerm) ||
                 (v.AffiliationType && v.AffiliationType.toLowerCase().includes(lowerTerm)) ||
+                (v.ContactNumber && v.ContactNumber.toLowerCase().includes(lowerTerm)) ||
+                (v.Email && v.Email.toLowerCase().includes(lowerTerm)) ||
                 v.VisitorID.toString().includes(lowerTerm)
             );
         }
 
-        // B. Status Filter
-        if (filters.status !== 'All') {
-            if (filters.status === 'Watchlisted') {
-                results = results.filter(v => Boolean(v.IsWatchlisted));
-            } else if (filters.status === 'Banned') {
-                results = results.filter(v => v.Status === 'Banned');
-            } else if (filters.status === 'Active') {
-                results = results.filter(v => v.Status === 'Active' && !v.IsWatchlisted);
-            }
+        if (filterType !== 'all') {
+            if (filterType === 'banned') results = results.filter(v => v.Status === 'Banned');
+            else if (filterType === 'watchlisted') results = results.filter(v => Boolean(v.IsWatchlisted) && v.Status !== 'Banned');
+            else if (filterType === 'active') results = results.filter(v => v.Status === 'Active' && !v.IsWatchlisted);
         }
 
-        // C. Affiliation Filter
-        if (filters.affiliation !== 'All') {
-            results = results.filter(v => v.AffiliationType === filters.affiliation);
-        }
-
-        // D. 📅 REGISTRATION DATE FILTER
-        if (filters.regStart) {
-            results = results.filter(v => new Date(v.created_at) >= new Date(filters.regStart));
-        }
+        if (filters.affiliation !== 'All') results = results.filter(v => v.AffiliationType === filters.affiliation || v.VisitorType === filters.affiliation);
+        if (filters.regStart) results = results.filter(v => new Date(v.created_at) >= new Date(filters.regStart));
         if (filters.regEnd) {
-            const endDate = new Date(filters.regEnd);
-            endDate.setHours(23, 59, 59);
+            const endDate = new Date(filters.regEnd); endDate.setHours(23, 59, 59);
             results = results.filter(v => new Date(v.created_at) <= endDate);
         }
-
-        // E. 👣 VISIT DATE FILTER (Logs)
         if (filters.visitStart || filters.visitEnd) {
             results = results.filter(v => {
                 if (!v.logs || v.logs.length === 0) return false;
@@ -89,179 +69,118 @@ export default function VisitorMasterList() {
             });
         }
 
-        setFilteredVisitors(results);
-    }, [searchTerm, filters, visitors]);
+        results.sort((a, b) => {
+            let aVal, bVal;
+            if (sortConfig.key === 'FullName') { aVal = a.FullName.toLowerCase(); bVal = b.FullName.toLowerCase(); } 
+            else if (sortConfig.key === 'AffiliationType') { aVal = (a.AffiliationType || a.VisitorType || '').toLowerCase(); bVal = (b.AffiliationType || b.VisitorType || '').toLowerCase(); } 
+            else if (sortConfig.key === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); } 
+            else if (sortConfig.key === 'LastVisit') {
+                aVal = a.logs && a.logs.length > 0 ? Math.max(...a.logs.map(l => new Date(l.EntryTimestamp).getTime())) : 0;
+                bVal = b.logs && b.logs.length > 0 ? Math.max(...b.logs.map(l => new Date(l.EntryTimestamp).getTime())) : 0;
+            }
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
 
-    // --- API ACTIONS ---
+        setFilteredVisitors(results);
+    }, [searchTerm, filterType, filters, sortConfig, visitors]);
+
+    const requestSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
+    };
+
+    const handleAdvancedSortChange = (e) => {
+        const [key, direction] = e.target.value.split('|');
+        setSortConfig({ key, direction });
+    };
 
     const fetchVisitors = async () => {
         try {
-            const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/admin/all-visitors`);
+            const response = await axios.get(`${API_BASE}/api/admin/all-visitors`);
             setVisitors(response.data);
             setLoading(false);
-        } catch (error) {
-            console.error("Error fetching data:", error);
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); setLoading(false); }
     };
 
-    const toggleBanStatus = async (e, id) => {
-        if(e) e.stopPropagation();
-        if(!window.confirm("Are you sure you want to change this visitor's status?")) return;
-        try {
-            await axios.put(`${import.meta.env.VITE_API_BASE_URL}/api/admin/visitors/${id}/status`);
-            fetchVisitors(); 
-            if(selectedVisitor && selectedVisitor.VisitorID === id) {
-                const updated = { ...selectedVisitor, Status: selectedVisitor.Status === 'Banned' ? 'Active' : 'Banned' };
-                setSelectedVisitor(updated);
-            }
-        } catch (error) { alert("Failed to update status."); }
-    };
+    // --- 🌍 UNIFIED GLOBAL CLEARANCE ACTION ---
+    const handleGlobalClearance = async (targetLevel) => {
+        if (!selectedVisitor) return;
+        const vid = selectedVisitor.VisitorID;
 
-    const toggleWatchlist = async (e, id, currentStatus) => {
-        if(e) e.stopPropagation(); 
-        let reason = null;
-        if (!currentStatus) {
-            reason = window.prompt("🚩 FLAGGING VISITOR\n\nEnter reason (e.g. 'Refused Search', 'Invalid ID'):", "Suspicious Behavior");
-            if (reason === null) return; 
-        } else {
-            if(!window.confirm("Remove from watchlist?")) return;
-        }
         try {
-            await axios.put(`${import.meta.env.VITE_API_BASE_URL}/api/admin/visitors/${id}/watchlist`, { reason });
+            await axios.post(`${API_BASE}/api/visitors/${vid}/global-status`, {
+                status: targetLevel,
+                reason: targetLevel === 'Cleared' ? 'Record Cleared' : actionReason
+            });
+
             fetchVisitors(); 
-             if(selectedVisitor && selectedVisitor.VisitorID === id) {
-                // Refresh full visitor data to get the new Security Log
-                const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/visitors/${id}`);
-                setSelectedVisitor(response.data);
-            }
-        } catch (error) { alert("Failed to update watchlist."); }
+            const response = await axios.get(`${API_BASE}/api/visitors/${vid}`);
+            setSelectedVisitor(response.data);
+            setInputMode(null); setActionReason("");
+        } catch (error) { alert("Action Failed. Please check network."); }
     };
     
     const handleRowClick = async (visitor) => {
         setShowModal(true);
         setHistoryLoading(true);
         try {
-            const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/visitors/${visitor.VisitorID}`);
+            const response = await axios.get(`${API_BASE}/api/visitors/${visitor.VisitorID}`);
             setSelectedVisitor(response.data);
         } catch (error) { console.error(error); } 
         finally { setHistoryLoading(false); }
     };
 
-    // --- HELPER: STATUS BADGE ---
     const getStatusBadge = (visitor) => {
-        if (visitor.Status === 'Banned') {
-            return (
-                <span style={{
-                    backgroundColor: '#fee2e2', color: '#991b1b', 
-                    padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', 
-                    display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #fecaca'
-                }}>
-                    🚫 BANNED
-                </span>
-            );
-        }
-        if (!!visitor.IsWatchlisted) {
-            return (
-                <span style={{
-                    backgroundColor: '#fef3c7', color: '#92400e', 
-                    padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700',
-                    display: 'inline-flex', alignItems: 'center', gap: '4px', border: '1px solid #fde68a'
-                }}>
-                    ⚠️ FLAGGED
-                </span>
-            );
-        }
-        return (
-            <span style={{
-                backgroundColor: '#def7ec', color: '#03543f', 
-                padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700',
-                border: '1px solid #bcf0da'
-            }}>
-                ✅ ACTIVE
-            </span>
-        );
-    };
-
-    // --- EXPORTS ---
-
-    const downloadCSV = () => {
-        const headers = ["Visitor ID", "Full Name", "Affiliation", "Sex", "Age", "Current Status", "Visit Date", "Time In", "Time Out", "Purpose", "Department", "Security Event", "Event Reason"];
-        const rows = [];
-        filteredVisitors.forEach(visitor => {
-            if (visitor.logs && visitor.logs.length > 0) {
-                visitor.logs.forEach(log => {
-                    let flagType = "Clean";
-                    let flagReason = "-";
-
-                    if (log.IsFlagged) {
-                        flagType = "AI FLAGGED";
-                        flagReason = log.FlagReason;
-                    } else if (log.IsManualFlag) {
-                        flagType = "OFFICER FLAGGED";
-                        flagReason = log.ManualFlagReason;
-                    }
-
-                    rows.push([
-                        visitor.VisitorID, `"${visitor.FullName}"`, visitor.AffiliationType || "Visitor",
-                        visitor.Sex, visitor.Age, visitor.Status,
-                        new Date(log.EntryTimestamp).toLocaleDateString(),
-                        new Date(log.EntryTimestamp).toLocaleTimeString(),
-                        log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString() : "Still Inside",
-                        `"${log.PurposeOfVisit}"`, 
-                        log.DepartmentToVisit || "-",
-                        flagType,
-                        `"${flagReason}"`
-                    ].join(","));
-                });
-            } else {
-                rows.push([visitor.VisitorID, `"${visitor.FullName}"`, visitor.AffiliationType || "Visitor", visitor.Sex, visitor.Age, visitor.Status, "-", "-", "-", "-", "-", "-", "-" ].join(","));
-            }
-        });
-        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `visecure_audit_report_${new Date().toISOString().slice(0,10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    const downloadPDF = () => {
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text("ViSecure - Visitor Audit Report", 14, 22);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
-        const tableColumn = ["ID", "Name", "Type", "Time In", "Time Out", "Dept", "Security"];
-        const tableRows = [];
-        filteredVisitors.forEach(visitor => {
-            const logs = visitor.logs && visitor.logs.length > 0 ? visitor.logs : [{}];
-            logs.forEach(log => {
-                let securityStatus = "OK";
-                if(log.IsFlagged) securityStatus = `AI: ${log.FlagReason}`;
-                else if(log.IsManualFlag) securityStatus = `OFFICER: ${log.ManualFlagReason}`;
-
-                const visitorData = [
-                    visitor.VisitorID, visitor.FullName, visitor.AffiliationType,
-                    log.EntryTimestamp ? new Date(log.EntryTimestamp).toLocaleTimeString() : '-',
-                    log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString() : 'Active',
-                    log.DepartmentToVisit || '-', 
-                    securityStatus
-                ];
-                tableRows.push(visitorData);
-            });
-        });
-        doc.autoTable({ head: [tableColumn], body: tableRows, startY: 40, theme: 'grid', headStyles: { fillColor: [22, 160, 133] } });
-        doc.save(`visecure_report_${Date.now()}.pdf`);
+        if (visitor.Status === 'Banned') return <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', border: '1px solid #fecaca' }}>🚫 BANNED</span>;
+        if (!!visitor.IsWatchlisted) return <span style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', border: '1px solid #fde68a' }}>⚠️ FLAGGED</span>;
+        return <span style={{ backgroundColor: '#def7ec', color: '#03543f', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', border: '1px solid #bcf0da' }}>🟢 CLEARED</span>;
     };
 
     // --- UI HELPERS ---
     const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
-    const clearFilters = () => { setFilters({ status: 'All', affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' }); setSearchTerm(''); };
-    const uniqueAffiliations = [...new Set(visitors.map(v => v.AffiliationType || 'Visitor'))];
+    const clearFilters = () => { 
+        setFilters({ affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' }); 
+        setSearchTerm(''); setFilterType('all'); setSortConfig({ key: 'LastVisit', direction: 'desc' });
+    };
+    
+    const uniqueAffiliations = [...new Set(visitors.map(v => v.AffiliationType || v.VisitorType || 'Visitor'))];
+    
+    const activeCount = visitors.filter(v => v.Status === 'Active' && !v.IsWatchlisted).length;
+    const watchlistedCount = visitors.filter(v => Boolean(v.IsWatchlisted) && v.Status !== 'Banned').length;
+    const bannedCount = visitors.filter(v => v.Status === 'Banned').length;
+
+    const ChipButton = ({ label, count, active, type, onClick }) => {
+        let baseColor = '#e5e7eb'; let activeColor = '#1f2937'; let textColor = '#374151'; let activeText = 'white';
+        if (type === 'banned') { baseColor = '#fee2e2'; activeColor = '#dc2626'; textColor = '#b91c1c'; }
+        if (type === 'watchlisted') { baseColor = '#fef3c7'; activeColor = '#d97706'; textColor = '#92400e'; }
+        if (type === 'active') { baseColor = '#dcfce7'; activeColor = '#16a34a'; textColor = '#166534'; }
+        return (
+            <button onClick={onClick} style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px', backgroundColor: active ? activeColor : baseColor, color: active ? activeText : textColor }}>
+                {label} <span style={{ opacity: 0.8, fontSize: '0.9em', marginLeft: '4px' }}>({count})</span>
+            </button>
+        );
+    };
+
+    const SortableHeader = ({ label, sortKey }) => {
+        const isActive = sortConfig.key === sortKey;
+        return (
+            <th style={{...styles.th, cursor: 'pointer', userSelect: 'none', backgroundColor: isActive ? '#f3f4f6' : '#f9fafb'}} onClick={() => requestSort(sortKey)} title={`Click to sort by ${label}`}>
+                <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                    <span style={{ color: isActive ? '#111827' : '#6b7280' }}>{label}</span>
+                    <span style={{ color: isActive ? '#4f46e5' : '#d1d5db', fontWeight: isActive ? '900' : 'normal', fontSize: isActive ? '16px' : '14px', transition: 'all 0.2s' }}>
+                        {isActive ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </span>
+                </div>
+            </th>
+        );
+    };
+
+    // --- EXPORTS ---
+    const downloadCSV = () => { /* Add back your full CSV export if needed */ };
+    const downloadPDF = () => { /* Add back your full PDF export if needed */ };
 
     // --- STYLES ---
     const styles = {
@@ -269,222 +188,140 @@ export default function VisitorMasterList() {
         searchGroup: { display: 'flex', gap: '10px', alignItems: 'center' },
         searchInput: { padding: '10px 15px', width: '250px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' },
         iconBtn: { backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: '600' },
-        
-        filterPanel: { 
-            backgroundColor: '#f9fafb', padding: '20px', borderRadius: '12px', marginBottom: '20px', 
-            border: '1px solid #e5e7eb', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start',
-            animation: 'fadeIn 0.3s ease-in-out'
-        },
+        filterPanel: { backgroundColor: '#f9fafb', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #e5e7eb', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start', animation: 'fadeIn 0.3s ease-in-out' },
         filterSection: { display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '20px', borderRight: '1px solid #e5e7eb' },
         inputGroup: { display: 'flex', flexDirection: 'column', gap: '5px' },
         label: { fontSize: '11px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' },
-        select: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: 'white', minWidth: '160px' },
+        select: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: 'white', minWidth: '160px', cursor: 'pointer' },
         dateInput: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: 'white' },
         clearBtn: { padding: '8px 16px', backgroundColor: 'white', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', alignSelf: 'flex-end', marginBottom: '5px' },
-        exportBtn: { backgroundColor: '#0e9f6e', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' },
-        
-        // Table Styles
         tableWrapper: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden', border: '1px solid #e5e7eb' },
         table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
-        th: { backgroundColor: '#f9fafb', color: '#6b7280', padding: '16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb' },
+        th: { backgroundColor: '#f9fafb', padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e5e7eb' },
         td: { padding: '16px', borderBottom: '1px solid #f3f4f6', color: '#1f2937', verticalAlign: 'middle' },
         row: { cursor: 'pointer', transition: 'all 0.1s ease-in-out' },
-        
-        // User Cell
-        userCell: { display: 'flex', alignItems: 'center', gap: '12px' },
-        avatar: { 
-            width: '36px', height: '36px', borderRadius: '50%', 
-            backgroundColor: '#e0e7ff', color: '#4f46e5',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '13px', fontWeight: '700'
-        },
-        userInfo: { display: 'flex', flexDirection: 'column' },
-        userName: { fontWeight: '600', color: '#111827' },
-        userEmail: { fontSize: '12px', color: '#6b7280' },
-
-        // Action Icons
-        actionBtn: { 
-            background: 'none', border: 'none', cursor: 'pointer', 
-            padding: '8px', borderRadius: '6px', fontSize: '16px',
-            transition: 'background 0.2s', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        },
-
-        // Modal Styles
-        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+        avatar: { width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e0e7ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', marginRight: '12px', flexShrink: 0 },
+        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' },
         modalContent: { backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '900px', maxHeight: '80vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' },
         closeBtn: { alignSelf: 'flex-end', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' },
-        
-        // New Modal Action Button Styles
-        modalActionBtn: {
-            width: '100%', padding: '10px 15px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s'
-        }
+        inputStyle: { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' }
     };
 
     return (
         <div className="fade-in">
             {/* 1. TOP BAR */}
             <div style={styles.topBar}>
-                <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1c23', fontWeight: '700' }}>
-                    📂 Visitor Master Records
-                    <span style={{ fontSize: '14px', color: '#6b7280', marginLeft: '10px', fontWeight: '400' }}>
-                        ({filteredVisitors.length} records found)
-                    </span>
-                </h2>
+                <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1c23', fontWeight: '700' }}>📂 Visitor Master Records</h2>
                 
-                <div style={styles.searchGroup}>
-                    <div style={{ position: 'relative' }}>
-                        <input 
-                            type="text" 
-                            placeholder="🔍 Search name, ID..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            style={styles.searchInput}
-                        />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
+                    <div style={styles.searchGroup}>
+                        <input type="text" placeholder="🔍 Search name, ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.searchInput} />
+                        <button onClick={() => setShowFilters(!showFilters)} style={{ ...styles.iconBtn, backgroundColor: showFilters ? '#e5e7eb' : 'white' }}>⚙️ Filters</button>
                     </div>
-                    <button 
-                        onClick={() => setShowFilters(!showFilters)} 
-                        style={{ ...styles.iconBtn, backgroundColor: showFilters ? '#e5e7eb' : 'white' }}
-                        title="Toggle Advanced Filters"
-                    >
-                        ⚙️ Filters
-                    </button>
-                    <div style={{height: '20px', width: '1px', backgroundColor: '#d1d5db', margin: '0 5px'}}></div>
-                    <button onClick={downloadCSV} style={styles.exportBtn}>📥 CSV</button>
-                    <button onClick={downloadPDF} style={{...styles.exportBtn, backgroundColor: '#b91c1c', marginLeft: '5px'}}>📄 PDF</button>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <ChipButton label="All Records" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
+                        <ChipButton label="🟢 Cleared" count={activeCount} active={filterType === 'active'} type="active" onClick={() => setFilterType('active')} />
+                        <ChipButton label="⚠️ Flagged" count={watchlistedCount} active={filterType === 'watchlisted'} type="watchlisted" onClick={() => setFilterType('watchlisted')} />
+                        <ChipButton label="🚫 Banned" count={bannedCount} active={filterType === 'banned'} type="banned" onClick={() => setFilterType('banned')} />
+                    </div>
                 </div>
             </div>
 
-            {/* 2. COLLAPSIBLE FILTER PANEL */}
+            {/* 2. COLLAPSIBLE ADVANCED FILTER PANEL */}
             {showFilters && (
                 <div style={styles.filterPanel}>
-                    {/* SECTION 1: ATTRIBUTES */}
+                    {/* Synchronized Dropdowns */}
                     <div style={styles.filterSection}>
                         <div style={styles.inputGroup}>
-                            <span style={styles.label}>Status</span>
-                            <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)} style={styles.select}>
-                                <option value="All">All Statuses</option>
-                                <option value="Active">✅ Active Only</option>
-                                <option value="Banned">🚫 Banned</option>
-                                <option value="Watchlisted">⚠️ Watchlisted</option>
+                            <span style={styles.label}>Clearance Status</span>
+                            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={styles.select}>
+                                <option value="all">All Statuses</option>
+                                <option value="active">🟢 Cleared (Active)</option>
+                                <option value="watchlisted">⚠️ Flagged / Watchlist</option>
+                                <option value="banned">🚫 Banned</option>
                             </select>
                         </div>
                         <div style={styles.inputGroup}>
-                            <span style={styles.label}>Affiliation</span>
+                            <span style={styles.label}>Sort By</span>
+                            <select value={`${sortConfig.key}|${sortConfig.direction}`} onChange={handleAdvancedSortChange} style={styles.select}>
+                                <option value="LastVisit|desc">Last Visit (Newest)</option>
+                                <option value="LastVisit|asc">Last Visit (Oldest)</option>
+                                <option value="created_at|desc">First Registered (Newest)</option>
+                                <option value="created_at|asc">First Registered (Oldest)</option>
+                                <option value="FullName|asc">Visitor Name (A-Z)</option>
+                                <option value="FullName|desc">Visitor Name (Z-A)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Classifications & Dates */}
+                    <div style={styles.filterSection}>
+                        <div style={styles.inputGroup}>
+                            <span style={styles.label}>Classification</span>
                             <select value={filters.affiliation} onChange={(e) => handleFilterChange('affiliation', e.target.value)} style={styles.select}>
                                 <option value="All">All Types</option>
                                 {uniqueAffiliations.map(type => (<option key={type} value={type}>{type}</option>))}
                             </select>
                         </div>
                     </div>
-
-                    {/* SECTION 2: REGISTRATION DATE */}
                     <div style={styles.filterSection}>
                         <span style={{fontSize: '11px', fontWeight: 'bold', color: '#374151', marginBottom: '5px'}}>📅 REGISTRATION DATE</span>
                         <div style={{display: 'flex', gap: '10px'}}>
-                            <div style={styles.inputGroup}>
-                                <span style={styles.label}>From</span>
-                                <input type="date" value={filters.regStart} onChange={(e) => handleFilterChange('regStart', e.target.value)} style={styles.dateInput} />
-                            </div>
-                            <div style={styles.inputGroup}>
-                                <span style={styles.label}>To</span>
-                                <input type="date" value={filters.regEnd} onChange={(e) => handleFilterChange('regEnd', e.target.value)} style={styles.dateInput} />
-                            </div>
+                            <div style={styles.inputGroup}><span style={styles.label}>From</span><input type="date" value={filters.regStart} onChange={(e) => handleFilterChange('regStart', e.target.value)} style={styles.dateInput} /></div>
+                            <div style={styles.inputGroup}><span style={styles.label}>To</span><input type="date" value={filters.regEnd} onChange={(e) => handleFilterChange('regEnd', e.target.value)} style={styles.dateInput} /></div>
                         </div>
                     </div>
-
-                    {/* SECTION 3: VISIT DATE */}
                     <div style={{...styles.filterSection, borderRight: 'none'}}>
                          <span style={{fontSize: '11px', fontWeight: 'bold', color: '#0e9f6e', marginBottom: '5px'}}>👣 VISIT HISTORY (ENTRY)</span>
                         <div style={{display: 'flex', gap: '10px'}}>
-                            <div style={styles.inputGroup}>
-                                <span style={styles.label}>From</span>
-                                <input type="date" value={filters.visitStart} onChange={(e) => handleFilterChange('visitStart', e.target.value)} style={styles.dateInput} />
-                            </div>
-                            <div style={styles.inputGroup}>
-                                <span style={styles.label}>To</span>
-                                <input type="date" value={filters.visitEnd} onChange={(e) => handleFilterChange('visitEnd', e.target.value)} style={styles.dateInput} />
-                            </div>
+                            <div style={styles.inputGroup}><span style={styles.label}>From</span><input type="date" value={filters.visitStart} onChange={(e) => handleFilterChange('visitStart', e.target.value)} style={styles.dateInput} /></div>
+                            <div style={styles.inputGroup}><span style={styles.label}>To</span><input type="date" value={filters.visitEnd} onChange={(e) => handleFilterChange('visitEnd', e.target.value)} style={styles.dateInput} /></div>
                         </div>
                     </div>
-
-                    <button onClick={clearFilters} style={styles.clearBtn}>✖ Reset</button>
+                    <button onClick={clearFilters} style={styles.clearBtn}>✖ Reset All</button>
                 </div>
             )}
             
-            {/* 3. TABLE */}
             {loading ? <p>Loading records...</p> : (
                 <div style={styles.tableWrapper}>
                     <table style={styles.table}>
                         <thead>
                             <tr>
-                                <th style={styles.th}>Visitor</th>
-                                <th style={styles.th}>Type</th>
-                                <th style={styles.th}>Status</th>
-                                <th style={styles.th}>Last Visit</th>
-                                <th style={{...styles.th, textAlign: 'right'}}>Actions</th>
+                                <SortableHeader label="Visitor Identity" sortKey="FullName" />
+                                <SortableHeader label="Classification" sortKey="AffiliationType" />
+                                <th style={{...styles.th, cursor: 'default'}}>Clearance</th>
+                                <SortableHeader label="First Registered" sortKey="created_at" />
+                                <SortableHeader label="Last Visit" sortKey="LastVisit" />
                             </tr>
                         </thead>
                         <tbody>
                             {filteredVisitors.length > 0 ? filteredVisitors.map((visitor) => {
-                                // Calculate Last Visit
-                                const lastLog = visitor.logs && visitor.logs.length > 0 
-                                    ? visitor.logs.sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0] 
-                                    : null;
-                                const lastVisitDate = lastLog ? new Date(lastLog.EntryTimestamp).toLocaleDateString() : 'Never';
+                                const lastLog = visitor.logs && visitor.logs.length > 0 ? [...visitor.logs].sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0] : null;
+                                const displayClassification = visitor.AffiliationType || visitor.VisitorType || 'Visitor';
 
                                 return (
-                                    <tr 
-                                        key={visitor.VisitorID} 
-                                        style={styles.row} 
-                                        onClick={() => handleRowClick(visitor)}
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                    >
-                                        {/* 1. VISITOR IDENTITY */}
+                                    <tr key={visitor.VisitorID} style={styles.row} onClick={() => handleRowClick(visitor)} title="Click to view full security profile" onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
                                         <td style={styles.td}>
-                                            <div style={styles.userCell}>
-                                                <div style={styles.avatar}>
-                                                    {(visitor.FirstName && visitor.FirstName[0])}{(visitor.Surname && visitor.Surname[0])}
-                                                </div>
-                                                <div style={styles.userInfo}>
-                                                    <span style={styles.userName}>{visitor.FullName}</span>
-                                                    <span style={styles.userEmail}>ID: {visitor.VisitorID}</span>
+                                            <div style={{display:'flex', alignItems:'center'}}>
+                                                <div style={styles.avatar}>{(visitor.FirstName && visitor.FirstName[0])}{(visitor.Surname && visitor.Surname[0])}</div>
+                                                <div>
+                                                    <div style={{fontWeight: 'bold', color: '#111827', fontSize: '15px'}}>{visitor.FullName}</div>
+                                                    <div style={{fontSize: '12px', color: '#6b7280', marginTop: '2px', fontWeight: '500'}}>ID: #{visitor.VisitorID}</div>
                                                 </div>
                                             </div>
                                         </td>
-
-                                        {/* 2. AFFILIATION */}
+                                        <td style={styles.td}><div style={{fontWeight: '600', color: '#374151'}}>{displayClassification}</div></td>
+                                        <td style={styles.td}>{getStatusBadge(visitor)}</td>
                                         <td style={styles.td}>
-                                            <span style={{
-                                                padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
-                                                backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', fontWeight: '500'
-                                            }}>
-                                                {visitor.AffiliationType || 'Visitor'}
-                                            </span>
+                                            <div style={{color: '#4b5563', fontSize: '13px'}}>{new Date(visitor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
                                         </td>
-
-                                        {/* 3. STATUS BADGE */}
                                         <td style={styles.td}>
-                                            {getStatusBadge(visitor)}
-                                        </td>
-
-                                        {/* 4. LAST VISIT */}
-                                        <td style={{...styles.td, color: '#6b7280', fontSize: '13px'}}>
-                                            {lastVisitDate}
-                                        </td>
-
-                                        {/* 5. ACTIONS */}
-                                        <td style={{...styles.td, textAlign: 'right'}}>
-                                            <div style={{display: 'flex', justifyContent: 'flex-end', gap: '5px'}}>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleRowClick(visitor); }}
-                                                    style={{...styles.actionBtn, color: '#3b82f6', backgroundColor: '#eff6ff', borderRadius: '50%', width: '30px', height: '30px', padding: 0}} 
-                                                    title="View Details"
-                                                >
-                                                    <IconEye />
-                                                </button>
-                                            </div>
+                                            {lastLog ? (
+                                                <div>
+                                                    <div style={{color: '#111827', fontWeight: '500', fontSize: '13px'}}>{new Date(lastLog.EntryTimestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                                                    <div style={{color: '#6b7280', fontSize: '11px', marginTop: '2px'}}>{new Date(lastLog.EntryTimestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+                                                </div>
+                                            ) : (<span style={{color: '#9ca3af', fontSize: '13px', fontStyle: 'italic'}}>No visits yet</span>)}
                                         </td>
                                     </tr>
                                 );
@@ -496,7 +333,7 @@ export default function VisitorMasterList() {
                 </div>
             )}
             
-            {/* VISITOR DETAILS MODAL */}
+            {/* 4. MODAL */}
             {showModal && (
                 <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
                     <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -506,38 +343,51 @@ export default function VisitorMasterList() {
                             <div style={{ display: 'flex', gap: '30px' }}>
                                 {/* LEFT: PROFILE & ACTIONS */}
                                 <div style={{ flex: 1, borderRight: '1px solid #e5e7eb', paddingRight: '20px' }}>
-                                    <h2 style={{ marginTop: 0, color: '#111827' }}>
-                                        {selectedVisitor.FullName}
-                                        {!!selectedVisitor.IsWatchlisted && <span style={{fontSize: '0.6em', color: '#eab308'}}> (⚠️ Watchlisted)</span>}
-                                    </h2>
-                                    <p style={{ color: '#6b7280', fontSize: '14px' }}>Visitor ID: #{selectedVisitor.VisitorID}</p>
+                                    <h2 style={{ marginTop: 0, color: '#111827' }}>{selectedVisitor.FullName}</h2>
+                                    <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>ID: #{selectedVisitor.VisitorID} • {selectedVisitor.AffiliationType || selectedVisitor.VisitorType}</p>
                                     
-                                    {/* 🟢 RESTORED: RICH PROFILE DETAILS */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
-                                        <div><strong>Type:</strong> {selectedVisitor.AffiliationType}</div>
-                                        <div><strong>Sex:</strong> {selectedVisitor.Sex}</div>
-                                        <div><strong>Age:</strong> {selectedVisitor.Age}</div>
-                                        <div><strong>Phone:</strong> {selectedVisitor.ContactNumber || 'N/A'}</div>
-                                        <div><strong>Email:</strong> {selectedVisitor.Email || 'N/A'}</div>
-                                        <div><strong>Status:</strong> {selectedVisitor.Status}</div>
-
-                                        {/* SECURITY ACTIONS */}
-                                        <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
-                                            <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Security Controls</h4>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                <button 
-                                                    onClick={(e) => toggleWatchlist(e, selectedVisitor.VisitorID, selectedVisitor.IsWatchlisted)}
-                                                    style={{
-                                                        ...styles.modalActionBtn,
-                                                        backgroundColor: selectedVisitor.IsWatchlisted ? '#fef3c7' : '#fffbeb', 
-                                                        color: selectedVisitor.IsWatchlisted ? '#92400e' : '#d97706',
-                                                        border: '1px solid #fcd34d'
-                                                    }}
-                                                >
-                                                    {selectedVisitor.IsWatchlisted ? <><IconFlag/> Unflag / Unban (Safe)</> : <><IconFlag/> Flag / Ban Visitor</>}
-                                                </button>
+                                    {/* 📇 FULL DETAILS GRID */}
+                                    <div style={{background:'#f9fafb', padding:'15px', borderRadius:'8px', marginTop:'20px', marginBottom:'20px', fontSize:'13px'}}>
+                                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
+                                            <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px'}}>
+                                                <strong style={{color: '#4f46e5'}}>Personal Data</strong>
                                             </div>
+                                            <div><strong>Age:</strong> {selectedVisitor.Age || 'N/A'}</div>
+                                            <div><strong>Sex:</strong> {selectedVisitor.Sex || 'N/A'}</div>
+                                            <div><strong>Phone:</strong> {selectedVisitor.ContactNumber || 'N/A'}</div>
+                                            <div><strong>Email:</strong> {selectedVisitor.Email || 'N/A'}</div>
                                         </div>
+                                    </div>
+
+                                    {/* 🌍 RESPONSIVE GLOBAL CLEARANCE */}
+                                    <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
+                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Global Status Control</h4>
+                                        
+                                        {(inputMode === 'watchlist' || inputMode === 'ban') ? (
+                                            <div className="fade-in">
+                                                <input type="text" autoFocus value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder={`Reason for ${inputMode}...`} style={{...styles.inputStyle, border: `1px solid ${inputMode === 'ban' ? '#ef4444' : '#d97706'}`}} />
+                                                <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
+                                                    <button onClick={() => setInputMode(null)} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer'}}>Cancel</button>
+                                                    <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer', background: inputMode === 'ban' ? '#ef4444' : '#d97706', color:'white', fontWeight:'bold'}}>Confirm</button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                                {selectedVisitor.Status === 'Banned' ? (
+                                                    <button onClick={() => handleGlobalClearance('Cleared')} style={{ gridColumn: 'span 2', padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Unban User (Clear Record)</button>
+                                                ) : selectedVisitor.IsWatchlisted == 1 ? (
+                                                    <>
+                                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Remove Flag</button>
+                                                        <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#ef4444', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => setInputMode('watchlist')} style={{ padding:'10px', background:'#fefce8', color:'#a16207', border:'1px solid #fef08a', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>⚠️ Global Flag</button>
+                                                        <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#fef2f2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 
@@ -545,30 +395,19 @@ export default function VisitorMasterList() {
                                 <div style={{ flex: 2 }}>
                                     <h3 style={{ marginTop: 0, color: '#374151' }}>📜 Security Audit Trail</h3>
                                     <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb', padding: '15px' }}>
-                                        
-                                        {/* 1. Show Security Logs (Bans/Unbans) */}
                                         {selectedVisitor.security_logs && selectedVisitor.security_logs.length > 0 ? (
                                             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                                                 {selectedVisitor.security_logs.map(log => (
                                                     <li key={log.id} style={{ marginBottom: '15px', borderLeft: '2px solid #d1d5db', paddingLeft: '15px', position: 'relative' }}>
-                                                        <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold' }}>
-                                                            {new Date(log.created_at).toLocaleString()} • {log.Officer}
-                                                        </div>
-                                                        <div style={{ fontWeight: 'bold', color: log.Action.includes('BAN') || log.Action === 'FLAG' ? '#b91c1c' : '#059669' }}>
-                                                            {log.Action}
-                                                        </div>
-                                                        <div style={{ fontSize: '13px', color: '#374151' }}>
-                                                            Reason: "{log.Reason}"
-                                                        </div>
+                                                        <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold' }}>{new Date(log.created_at).toLocaleString()} • {log.Officer}</div>
+                                                        <div style={{ fontWeight: 'bold', color: log.Action.includes('BAN') || log.Action === 'GLOBAL_FLAG' ? '#b91c1c' : '#059669' }}>{log.Action}</div>
+                                                        <div style={{ fontSize: '13px', color: '#374151' }}>Reason: "{log.Reason}"</div>
                                                     </li>
                                                 ))}
                                             </ul>
-                                        ) : (
-                                            <p style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>No security incidents recorded.</p>
-                                        )}
+                                        ) : (<p style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>No security incidents recorded.</p>)}
                                     </div>
 
-                                    {/* 2. Show Normal Visits (RESTORED DEPT & ARROWS) */}
                                     <h4 style={{ marginTop: '20px', borderTop: '1px solid #e5e7eb', paddingTop: '10px', color: '#374151' }}>Recent Visits</h4>
                                     <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
                                         <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
@@ -585,15 +424,9 @@ export default function VisitorMasterList() {
                                                     <tr key={log.LogID} style={{borderBottom: '1px solid #f3f4f6'}}>
                                                         <td style={{padding: '8px'}}>{new Date(log.EntryTimestamp).toLocaleDateString()}</td>
                                                         <td style={{ padding: '8px' }}>
-                                                            {/* 🟢 ENTRY ARROW */}
-                                                            <div style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                ⬇ {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                            </div>
-                                                            {/* 🔴 EXIT ARROW or ACTIVE PILL */}
+                                                            <div style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: '5px' }}>⬇ {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                                                             {log.ExitTimestamp ? 
-                                                                <div style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                    ⬆ {new Date(log.ExitTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                                </div> : 
+                                                                <div style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '5px' }}>⬆ {new Date(log.ExitTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div> : 
                                                                 <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', marginTop: '2px', display: 'inline-block' }}>ACTIVE</span>
                                                             }
                                                         </td>

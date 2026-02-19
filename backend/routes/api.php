@@ -56,3 +56,6 @@ Route::post('/visit-logs/{id}/toggle-manual-flag', [VisitorController::class, 't
 
 // General Logs
 Route::get('/logs', [VisitorLogController::class, 'index']);
+
+// Unified Global Security Status
+Route::post('/visitors/{id}/global-status', [VisitorController::class, 'updateGlobalStatus']);

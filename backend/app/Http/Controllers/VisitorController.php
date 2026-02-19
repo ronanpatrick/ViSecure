@@ -428,4 +428,44 @@ class VisitorController extends Controller
             'reason' => $log->ManualFlagReason
         ]);
     }
+
+    // 🌍 UNIFIED GLOBAL STATUS (With Audit Trail)
+    public function updateGlobalStatus(Request $request, $id)
+    {
+        $visitor = Visitor::find($id);
+        if (!$visitor) return response()->json(['message' => 'Not found'], 404);
+
+        $status = $request->input('status'); // 'Cleared', 'Watchlisted', 'Banned'
+        $reason = $request->input('reason', 'Admin Action');
+        $actionLog = '';
+
+        if ($status === 'Cleared') {
+            $visitor->Status = 'Active';
+            $visitor->IsWatchlisted = false;
+            $visitor->WatchlistReason = null;
+            $actionLog = 'CLEARED_RECORD';
+        } elseif ($status === 'Watchlisted') {
+            $visitor->Status = 'Active';
+            $visitor->IsWatchlisted = true;
+            $visitor->WatchlistReason = $reason;
+            $actionLog = 'GLOBAL_FLAG';
+        } elseif ($status === 'Banned') {
+            $visitor->Status = 'Banned';
+            $visitor->IsWatchlisted = true; 
+            $visitor->WatchlistReason = $reason;
+            $actionLog = 'BANNED';
+        }
+
+        $visitor->save();
+
+        // 📝 RECORD AUDIT LOG
+        SecurityLog::create([
+            'VisitorID' => $visitor->VisitorID,
+            'Action'    => $actionLog,
+            'Reason'    => $reason,
+            'Officer'   => 'Admin'
+        ]);
+
+        return response()->json(['message' => 'Global status updated successfully']);
+    }
 }
