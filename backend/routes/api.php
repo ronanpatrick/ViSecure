@@ -59,3 +59,5 @@ Route::get('/logs', [VisitorLogController::class, 'index']);
 
 // Unified Global Security Status
 Route::post('/visitors/{id}/global-status', [VisitorController::class, 'updateGlobalStatus']);
+
+Route::get('/admin/ai-summary', [MonitorController::class, 'generateAISummary']);

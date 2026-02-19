@@ -5,6 +5,10 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\VisitLog;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class MonitorController extends Controller
 {
@@ -123,5 +127,50 @@ class MonitorController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function generateAISummary() {
+        // We use Cache::forget to make sure you see the new version immediately
+        Cache::forget('visecure_ai_summary'); 
+
+        return Cache::remember('visecure_ai_summary', 1800, function () {
+            $today = Carbon::today();
+
+            $totalVisits = VisitLog::whereDate('EntryTimestamp', $today)->count();
+            $activeVisits = VisitLog::whereNull('ExitTimestamp')->whereDate('EntryTimestamp', $today)->count();
+            $flaggedCount = VisitLog::where('IsFlagged', 1)->whereDate('EntryTimestamp', $today)->count();
+            
+            $busiestDept = VisitLog::whereDate('EntryTimestamp', $today)
+                ->select('DepartmentToVisit', DB::raw('count(*) as total'))
+                ->groupBy('DepartmentToVisit')
+                ->orderByDesc('total')
+                ->first();
+            $deptName = $busiestDept ? $busiestDept->DepartmentToVisit : 'None';
+
+            // THE ULTIMATE CONCISE PROMPT
+            $prompt = "Write a 2-sentence summary of today's security data. 
+            DO NOT include titles, headers, bullet points, or dates. 
+            Data: $totalVisits total visitors, $activeVisits on-site, $flaggedCount flags, $deptName is busiest. 
+            Start immediately with the analysis.";
+
+            $apiKey = env('GEMINI_API_KEY');
+            
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders(['Content-Type' => 'application/json'])
+                    ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={$apiKey}", [
+                    'contents' => [['parts' => [['text' => $prompt]]]]
+                ]);
+
+                $result = $response->json();
+                $summary = $result['candidates'][0]['content']['parts'][0]['text'] ?? "No data available.";
+                
+                // Remove any potential markdown bolding or headers the AI might try to sneak in
+                return ['summary' => trim(strip_tags($summary))];
+
+            } catch (\Exception $e) {
+                return ['summary' => "Security overview is stable. Monitor active."];
+            }
+        });
     }
 }

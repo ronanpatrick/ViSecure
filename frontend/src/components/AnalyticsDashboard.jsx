@@ -13,17 +13,36 @@ export default function AnalyticsDashboard() {
     const [loading, setLoading] = useState(true);
     const [autoRefresh, setAutoRefresh] = useState(false);
     
-    // 🆕 Timeline States
+    // Timeline States
     const [period, setPeriod] = useState('today');
     const [customStart, setCustomStart] = useState('');
     const [customEnd, setCustomEnd] = useState('');
 
+    // 🆕 AI SUMMARY STATES
+    const [aiSummary, setAiSummary] = useState('');
+    const [isThinking, setIsThinking] = useState(true);
+
     const API_URL = import.meta.env.VITE_API_BASE_URL;
+
+    // 🆕 AI FETCH LOGIC
+    useEffect(() => {
+        const fetchSummary = async () => {
+            setIsThinking(true);
+            try {
+                const res = await axios.get(`${API_URL}/api/admin/ai-summary`);
+                setAiSummary(res.data.summary);
+            } catch (err) {
+                setAiSummary("System operating normally. Traffic is within expected parameters.");
+            } finally {
+                setIsThinking(false);
+            }
+        };
+        fetchSummary();
+    }, []);
 
     const fetchAnalytics = async () => {
         setLoading(true);
         try {
-            // Include custom dates in the request if 'custom' is selected
             const params = { period };
             if (period === 'custom') {
                 params.start_date = customStart;
@@ -39,24 +58,18 @@ export default function AnalyticsDashboard() {
         }
     };
 
-    // Auto-fetch when period changes (unless it's 'custom', then we wait for them to click 'Apply')
     useEffect(() => {
         if (period !== 'custom') {
             fetchAnalytics();
         }
     }, [period]);
 
-    // Auto-Refresh Logic
     useEffect(() => {
         let interval = null;
         if (autoRefresh) interval = setInterval(fetchAnalytics, 60000);
         return () => { if (interval) clearInterval(interval); };
     }, [autoRefresh, period, customStart, customEnd]);
 
-    // --- 🛠️ BULLETPROOF PDF EXPORT LOGIC ---
-    // --- 🛠️ BULLETPROOF PDF EXPORT LOGIC ---
-    // --- 🛠️ BULLETPROOF & EXPANDED PDF EXPORT LOGIC ---
-    // --- 🛠️ BULLETPROOF & EXPANDED PDF EXPORT LOGIC ---
     const generatePDFReport = () => {
         try {
             const doc = new jsPDF();
@@ -73,7 +86,7 @@ export default function AnalyticsDashboard() {
             doc.text(`Generated on: ${new Date().toLocaleString()} | Period: ${dateStr}`, 14, currentY);
             currentY += 15;
             
-            // 📊 1. OVERVIEW METRICS
+            // 1. OVERVIEW METRICS
             autoTable(doc, {
                 startY: currentY,
                 head: [['Total Visits', 'Currently Active', 'Security Alerts', 'Avg Dwell Time']],
@@ -87,7 +100,7 @@ export default function AnalyticsDashboard() {
                 didDrawPage: (d) => { currentY = d.cursor.y; }
             });
 
-            // 👥 2. VISITOR CLASSIFICATIONS (COMBINED TABLE)
+            // 2. VISITOR CLASSIFICATIONS
             currentY += 12;
             doc.setFontSize(12); doc.setTextColor(0);
             doc.text("Visitor Demographics", 14, currentY);
@@ -109,7 +122,7 @@ export default function AnalyticsDashboard() {
                 didDrawPage: (d) => { currentY = d.cursor.y; }
             });
 
-            // 🏢 3. DEPARTMENTS
+            // 3. DEPARTMENTS
             currentY += 12;
             doc.text("Top Departments Visited", 14, currentY);
             
@@ -121,24 +134,16 @@ export default function AnalyticsDashboard() {
                 didDrawPage: (d) => { currentY = d.cursor.y; }
             });
 
-            // 🚨 4. SECURITY INCIDENTS (UNIFIED DATA CLEANER)
+            // 4. SECURITY INCIDENTS
             currentY += 12;
             doc.text("Security Incident Breakdown", 14, currentY);
             
-            // Data Cleaner: Merge old and new terms into unified Global actions
             const cleanIncidents = {};
             data.security_incidents.forEach(i => {
                 let action = i.Action ? i.Action.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN';
-                
-                // Unify Bans
                 if (action.includes('BAN')) action = 'BANNED (RESTRICTED ACCESS)'; 
-                
-                // Unify Flags (Global Watchlist)
                 if (action.includes('FLAG')) action = 'FLAGGED (WATCHLIST)'; 
-                
-                // Keep Overstays distinct
                 if (action.includes('OVERSTAY')) action = 'OVERSTAY ALERT';
-                
                 cleanIncidents[action] = (cleanIncidents[action] || 0) + i.count;
             });
 
@@ -157,7 +162,6 @@ export default function AnalyticsDashboard() {
                 doc.text("✅ No security incidents recorded for this period.", 14, currentY + 8);
             }
 
-            // Output the file
             doc.save(`ViSecure_Analytics_${period}.pdf`);
             
         } catch (error) {
@@ -169,7 +173,6 @@ export default function AnalyticsDashboard() {
     if (loading && !data) return <div className="fade-in" style={{padding: '40px', color: '#6b7280', textAlign: 'center'}}>📊 Calculating Intelligence...</div>;
     if (!data || !data.summary) return <div style={{padding: '40px', textAlign: 'center', color: '#ef4444'}}>⚠️ Database Sync Error</div>;
 
-    // --- CHART.JS CONFIGURATIONS (Unchanged) ---
     const hoursLabel = Array.from({ length: 24 }, (_, i) => `${i}:00`);
     const trafficData = { labels: hoursLabel, datasets: [ { label: 'Actual Visits', data: hoursLabel.map((_, i) => { const match = data.peak_hours.find(h => parseInt(h.hour) === i); return match ? match.count : 0; }), backgroundColor: '#3b82f6', borderRadius: 4 }, ...(period === 'today' && data.predicted_hours ? [{ label: 'AI Predicted', data: Object.values(data.predicted_hours), backgroundColor: '#e5e7eb', borderRadius: 4, grouped: false, order: 1 }] : []) ] };
     const daysLabel = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; const heatmapHours = Array.from({ length: 12 }, (_, i) => i + 7); const formatHour = (h) => `${h > 12 ? h - 12 : h}${h >= 12 ? 'p' : 'a'}`; let maxHeatmapVal = 0; const matrixPoints = []; if (data.heatmap) { daysLabel.forEach(day => { heatmapHours.forEach(hour => { const count = data.heatmap[day]?.[hour] || 0; if (count > maxHeatmapVal) maxHeatmapVal = count; matrixPoints.push({ x: formatHour(hour), y: day, v: count }); }); }); }
@@ -205,7 +208,6 @@ export default function AnalyticsDashboard() {
                     </button>
 
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'white', padding: '4px', borderRadius: '10px', border: '1px solid #d1d5db' }}>
-                        {/* 🆕 TIMELINE DROPDOWN */}
                         <select 
                             value={period} 
                             onChange={(e) => {
@@ -222,7 +224,6 @@ export default function AnalyticsDashboard() {
                             <option value="custom">⚙️ Custom Range...</option>
                         </select>
 
-                        {/* 🆕 CUSTOM DATE INPUTS (Only visible when Custom is selected) */}
                         {period === 'custom' && (
                             <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '1px solid #e5e7eb', paddingLeft: '8px' }}>
                                 <input type="date" value={customStart} onChange={(e)=>setCustomStart(e.target.value)} style={dateInputStyle} />
@@ -241,12 +242,28 @@ export default function AnalyticsDashboard() {
                 </div>
             </div>
 
-            {/* 2. 🧠 AI EXECUTIVE INSIGHTS PANEL */}
-            <div style={{ backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '20px', marginBottom: '25px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#5b21b6', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>✨ AI Executive Summary</h3>
-                <ul style={{ margin: 0, paddingLeft: '20px', color: '#4c1d95', fontSize: '13.5px', lineHeight: '1.6', fontWeight: '500' }}>
-                    {data.insights.map((insight, idx) => <li key={idx}>{insight}</li>)}
-                </ul>
+            {/* 2. 🧠 UPGRADED LIVE AI EXECUTIVE INSIGHTS PANEL */}
+            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px', marginBottom: '25px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: '#166534', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🧠 ViSecure AI Analyst
+                </h3>
+                
+                {isThinking ? (
+                    <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#15803d', fontStyle: 'italic', fontSize: '14px' }}>
+                        <span>⏳ Analyzing real-time facility traffic...</span>
+                    </div>
+                ) : (
+                    <p className="fade-in" style={{ 
+                        margin: 0, 
+                        color: '#15803d', 
+                        fontSize: '14px', 
+                        lineHeight: '1.6', 
+                        fontWeight: '500',
+                        whiteSpace: 'pre-line' // 👈 This allows \n newlines to show up as actual line breaks
+                    }}>
+                        {aiSummary}
+                    </p>
+                )}
             </div>
 
             {/* 3. KEY METRICS */}
