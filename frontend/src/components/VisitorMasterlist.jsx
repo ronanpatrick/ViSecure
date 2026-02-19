@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 export default function VisitorMasterList() {
     const [visitors, setVisitors] = useState([]);
@@ -11,6 +11,7 @@ export default function VisitorMasterList() {
     // 🔍 SEARCH, FILTER & SORT STATES
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
     
     const [filterType, setFilterType] = useState('all'); 
     const [sortConfig, setSortConfig] = useState({ key: 'LastVisit', direction: 'desc' });
@@ -178,9 +179,187 @@ export default function VisitorMasterList() {
         );
     };
 
-    // --- EXPORTS ---
-    const downloadCSV = () => { /* Logic unchanged */ };
-    const downloadPDF = () => { /* Logic unchanged */ };
+    // --- 📥 EXPORTS LOGIC ---
+
+    const downloadCSV = () => {
+        const headers = [
+            "Visitor ID", "Full Name", "Age", "Sex", "Contact", "Email", 
+            "Classification", "Clearance Status", "Registration Date",
+            "Log - Date", "Log - Time In", "Log - Time Out", "Log - Purpose", "Log - Department", "Log - Person To Visit" // 🆕 Added Person To Visit
+        ];
+        
+        const rows = [];
+        
+        filteredVisitors.forEach(v => {
+            const status = v.Status === 'Banned' ? 'BANNED' : (v.IsWatchlisted ? 'FLAGGED' : 'CLEARED');
+            const baseData = [
+                v.VisitorID, 
+                `"${v.FullName}"`, 
+                v.Age || "N/A", 
+                v.Sex || "N/A", 
+                `"${v.ContactNumber || "N/A"}"`, 
+                `"${v.Email || "N/A"}"`, 
+                `"${v.AffiliationType || v.VisitorType || "Guest"}"`, 
+                status, 
+                new Date(v.created_at).toLocaleDateString()
+            ];
+
+            if (!v.logs || v.logs.length === 0) {
+                rows.push([...baseData, "No visits", "-", "-", "-", "-", "-"].join(",")); // 🆕 Added extra '-' for the new column
+            } else {
+                const sortedLogs = [...v.logs].sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp));
+                sortedLogs.forEach(log => {
+                    const logDate = new Date(log.EntryTimestamp).toLocaleDateString();
+                    const timeIn = new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const timeOut = log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "ACTIVE";
+                    
+                    rows.push([
+                        ...baseData, 
+                        `"${logDate}"`, 
+                        `"${timeIn}"`, 
+                        `"${timeOut}"`, 
+                        `"${log.PurposeOfVisit || '-'}"`, 
+                        `"${log.DepartmentToVisit || '-'}"`,
+                        `"${log.PersonToVisit || '-'}"` // 🆕 Added Person To Visit Data
+                    ].join(","));
+                });
+            }
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `ViSecure_Detailed_Export_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const downloadPDF = () => {
+        try {
+            const doc = new jsPDF('landscape');
+            doc.setFontSize(18);
+            doc.text("ViSecure - Master Visitor Records", 14, 22);
+            
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Generated on: ${new Date().toLocaleString()} | Total Records: ${filteredVisitors.length}`, 14, 30);
+
+            const tableData = filteredVisitors.map(v => {
+                const lastLog = v.logs && v.logs.length > 0 ? [...v.logs].sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0] : null;
+                const status = v.Status === 'Banned' ? 'BANNED' : (v.IsWatchlisted ? 'FLAGGED' : 'CLEARED');
+                return [
+                    String(v.VisitorID),
+                    v.FullName,
+                    v.AffiliationType || v.VisitorType || 'Guest',
+                    status,
+                    String(v.logs ? v.logs.length : 0),
+                    new Date(v.created_at).toLocaleDateString(),
+                    lastLog ? new Date(lastLog.EntryTimestamp).toLocaleDateString() : 'N/A'
+                ];
+            });
+
+            autoTable(doc, {
+                startY: 40,
+                head: [['ID', 'Full Name', 'Classification', 'Status', 'Total Visits', 'Registered', 'Last Visit']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [31, 41, 55] },
+                didParseCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 3) {
+                        if (data.cell.raw === 'BANNED') data.cell.styles.textColor = [220, 38, 38]; 
+                        else if (data.cell.raw === 'FLAGGED') data.cell.styles.textColor = [217, 119, 6]; 
+                        else if (data.cell.raw === 'CLEARED') data.cell.styles.textColor = [16, 185, 129]; 
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+            });
+
+            doc.save(`ViSecure_Masterlist_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error("PDF Error: ", error);
+            alert("Failed to generate PDF. Please check the console.");
+        }
+    };
+
+    const downloadVisitorProfilePDF = () => {
+        if (!selectedVisitor) return;
+        try {
+            const doc = new jsPDF();
+            let currentY = 20;
+
+            doc.setFontSize(18);
+            doc.text(`Security Dossier: ${selectedVisitor.FullName}`, 14, currentY);
+            currentY += 8;
+
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`ID: #${selectedVisitor.VisitorID} | Classification: ${selectedVisitor.AffiliationType || selectedVisitor.VisitorType} | Status: ${selectedVisitor.Status}`, 14, currentY);
+            currentY += 15;
+
+            autoTable(doc, {
+                startY: currentY,
+                head: [['Personal Information', '']],
+                body: [
+                    ['Age', String(selectedVisitor.Age || 'N/A')],
+                    ['Sex', selectedVisitor.Sex || 'N/A'],
+                    ['Contact Number', selectedVisitor.ContactNumber || 'N/A'],
+                    ['Email Address', selectedVisitor.Email || 'N/A']
+                ],
+                theme: 'grid',
+                headStyles: { fillColor: [79, 70, 229] },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            currentY += 15;
+            doc.setFontSize(14); doc.setTextColor(17, 24, 39);
+            doc.text("Security Audit Trail", 14, currentY);
+            
+            const secLogs = selectedVisitor.security_logs || selectedVisitor.securityLogs || [];
+            const secData = secLogs.map(log => [
+                new Date(log.created_at).toLocaleString(),
+                log.Action.replace(/_/g, ' '),
+                log.Reason,
+                log.Officer
+            ]);
+
+            autoTable(doc, {
+                startY: currentY + 5,
+                head: [['Date / Time', 'Action', 'Reason', 'Officer']],
+                body: secData.length > 0 ? secData : [['-', '✅ No security incidents recorded', '-', '-']],
+                theme: 'striped',
+                headStyles: { fillColor: [220, 38, 38] },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            currentY += 15;
+            doc.setFontSize(14); doc.setTextColor(17, 24, 39);
+            doc.text("Complete Visit History", 14, currentY);
+
+            const visitData = (selectedVisitor.logs || []).map(log => [
+                new Date(log.EntryTimestamp).toLocaleDateString(),
+                new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'ACTIVE',
+                log.PurposeOfVisit || '-',
+                log.DepartmentToVisit || '-',
+                log.PersonToVisit || '-' // 🆕 Added Person To Visit Data
+            ]);
+
+            autoTable(doc, {
+                startY: currentY + 5,
+                head: [['Date', 'Time In', 'Time Out', 'Purpose', 'Department', 'Host / Person']], // 🆕 Added Column Header
+                body: visitData.length > 0 ? visitData : [['-', 'No visits recorded', '-', '-', '-', '-']],
+                theme: 'striped',
+                headStyles: { fillColor: [16, 185, 129] }
+            });
+
+            doc.save(`ViSecure_Dossier_${selectedVisitor.FullName.replace(/\s+/g, '_')}.pdf`);
+        } catch (error) {
+            console.error("PDF Error: ", error);
+            alert("Failed to export profile.");
+        }
+    };
 
     // --- STYLES ---
     const styles = {
@@ -207,7 +386,6 @@ export default function VisitorMasterList() {
         inputStyle: { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' }
     };
 
-    // Safety Fallback for Laravel relationships
     const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];
 
     return (
@@ -220,6 +398,38 @@ export default function VisitorMasterList() {
                     <div style={styles.searchGroup}>
                         <input type="text" placeholder="🔍 Search name, ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.searchInput} />
                         <button onClick={() => setShowFilters(!showFilters)} style={{ ...styles.iconBtn, backgroundColor: showFilters ? '#e5e7eb' : 'white' }}>⚙️ Filters</button>
+                        
+                        {/* UNIFIED EXPORT DROPDOWN MENU */}
+                        <div style={{width: '1px', height: '24px', backgroundColor: '#d1d5db', margin: '0 5px'}}></div>
+                        <div style={{ position: 'relative' }}>
+                            <button 
+                                onClick={() => setShowExportMenu(!showExportMenu)} 
+                                style={{ ...styles.iconBtn, backgroundColor: showExportMenu ? '#e5e7eb' : 'white' }}
+                            >
+                                📥 Export ▾
+                            </button>
+                            
+                            {showExportMenu && (
+                                <div className="fade-in" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '180px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                    <button 
+                                        onClick={() => { downloadCSV(); setShowExportMenu(false); }} 
+                                        style={{ padding: '12px 15px', textAlign: 'left', background: 'white', border: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                        onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                        onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                                    >
+                                        📊 Full List (CSV)
+                                    </button>
+                                    <button 
+                                        onClick={() => { downloadPDF(); setShowExportMenu(false); }} 
+                                        style={{ padding: '12px 15px', textAlign: 'left', background: 'white', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                        onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                        onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                                    >
+                                        📄 Summary (PDF)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                         <ChipButton label="All Records" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
@@ -233,7 +443,6 @@ export default function VisitorMasterList() {
             {/* 2. COLLAPSIBLE ADVANCED FILTER PANEL */}
             {showFilters && (
                 <div style={styles.filterPanel}>
-                    {/* Synchronized Dropdowns */}
                     <div style={styles.filterSection}>
                         <div style={styles.inputGroup}>
                             <span style={styles.label}>Clearance Status</span>
@@ -256,8 +465,6 @@ export default function VisitorMasterList() {
                             </select>
                         </div>
                     </div>
-
-                    {/* Classifications & Dates */}
                     <div style={styles.filterSection}>
                         <div style={styles.inputGroup}>
                             <span style={styles.label}>Classification</span>
@@ -347,10 +554,19 @@ export default function VisitorMasterList() {
                             <div style={{ display: 'flex', gap: '30px' }}>
                                 {/* LEFT: PROFILE & ACTIONS */}
                                 <div style={{ flex: 1, borderRight: '1px solid #e5e7eb', paddingRight: '20px' }}>
-                                    <h2 style={{ marginTop: 0, color: '#111827' }}>{selectedVisitor.FullName}</h2>
+                                    <h2 style={{ marginTop: 0, color: '#111827', marginBottom: '5px' }}>{selectedVisitor.FullName}</h2>
                                     <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>ID: #{selectedVisitor.VisitorID} • {selectedVisitor.AffiliationType || selectedVisitor.VisitorType}</p>
                                     
-                                    {/* 📇 FULL DETAILS GRID */}
+                                    {/* EXPORT DOSSIER BUTTON */}
+                                    <button 
+                                        onClick={downloadVisitorProfilePDF} 
+                                        style={{ marginTop: '15px', width: '100%', padding: '10px', background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', transition: 'all 0.2s', fontSize: '13px' }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = '#e0e7ff'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = '#eef2ff'; }}
+                                    >
+                                        📥 Download Full Security Dossier
+                                    </button>
+
                                     <div style={{background:'#f9fafb', padding:'15px', borderRadius:'8px', marginTop:'20px', marginBottom:'20px', fontSize:'13px'}}>
                                         <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
                                             <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px'}}>
@@ -363,7 +579,6 @@ export default function VisitorMasterList() {
                                         </div>
                                     </div>
 
-                                    {/* 🌍 RESPONSIVE GLOBAL CLEARANCE */}
                                     <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
                                         <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Global Status Control</h4>
                                         
@@ -429,6 +644,8 @@ export default function VisitorMasterList() {
                                                     <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>In / Out</th>
                                                     <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Purpose</th>
                                                     <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Dept</th>
+                                                    {/* 🆕 ADDED HOST HEADER TO MODAL UI */}
+                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Host/Person</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -447,9 +664,11 @@ export default function VisitorMasterList() {
                                                             {log.IsFlagged && <div style={{fontSize: '10px', color: '#b91c1c', fontWeight: 'bold'}}>⚠️ SUSPICIOUS</div>}
                                                         </td>
                                                         <td style={{padding: '8px'}}>{log.DepartmentToVisit || '-'}</td>
+                                                        {/* 🆕 ADDED HOST DATA TO MODAL UI */}
+                                                        <td style={{padding: '8px'}}>{log.PersonToVisit || '-'}</td>
                                                     </tr>
                                                 )) : (
-                                                    <tr><td colSpan="4" style={{padding: '15px', color: '#9ca3af', textAlign: 'center'}}>No visit history found.</td></tr>
+                                                    <tr><td colSpan="5" style={{padding: '15px', color: '#9ca3af', textAlign: 'center'}}>No visit history found.</td></tr>
                                                 )}
                                             </tbody>
                                         </table>

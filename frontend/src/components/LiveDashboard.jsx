@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
 export default function LiveDashboard() {
@@ -8,22 +8,11 @@ export default function LiveDashboard() {
     
     const [searchTerm, setSearchTerm] = useState("");
     const [filterType, setFilterType] = useState("all"); 
-
-    const SESSION_DURATION = 24 * 60 * 60 * 1000; 
     const [currentTime, setCurrentTime] = useState(new Date());
     
-    const [activityFeed, setActivityFeed] = useState(() => {
-        const savedFeed = localStorage.getItem('visecure_activity_feed');
-        return savedFeed ? JSON.parse(savedFeed) : [];
-    });
+    // 🔥 Activity feed is now completely stateless and driven by the database!
+    const [activityFeed, setActivityFeed] = useState([]);
     
-    const processedLogIds = useRef(new Set());
-
-    useEffect(() => {
-        const savedIds = localStorage.getItem('visecure_processed_ids');
-        if (savedIds) processedLogIds.current = new Set(JSON.parse(savedIds));
-    }, []);
-
     const [selectedVisitor, setSelectedVisitor] = useState(null);
     const [inputMode, setInputMode] = useState(null); 
     const [actionReason, setActionReason] = useState(""); 
@@ -34,78 +23,16 @@ export default function LiveDashboard() {
         if (!selectedVisitor) { setInputMode(null); setActionReason(""); }
     }, [selectedVisitor]);
 
-    useEffect(() => { localStorage.setItem('visecure_activity_feed', JSON.stringify(activityFeed)); }, [activityFeed]);
-
-    useEffect(() => {
-        const checkSession = () => {
-            const savedStart = localStorage.getItem('visecure_session_start');
-            const now = Date.now();
-            if (!savedStart) {
-                localStorage.setItem('visecure_session_start', now);
-                addActivity("🚀 SYSTEM STARTED: Monitoring Session Begun", "system", now);
-                return;
-            }
-            if ((now - parseInt(savedStart)) > SESSION_DURATION) {
-                localStorage.setItem('visecure_session_start', now);
-                processedLogIds.current.clear();
-                localStorage.removeItem('visecure_processed_ids');
-                setActivityFeed([{ id: 'sys-start-' + now, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), msg: "🚀 SYSTEM STARTED: New Cycle", type: "system" }]); 
-            }
-        };
-        checkSession();
-        const timer = setInterval(checkSession, 60000); 
-        return () => clearInterval(timer);
-    }, []);
-
-    const addActivity = (msg, type = 'neutral', customTime = null) => {
-        const timeObj = customTime ? new Date(customTime) : new Date();
-        const newLog = { id: Date.now() + Math.random(), time: timeObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), msg: msg, type: type };
-        setActivityFeed(prev => [newLog, ...prev].slice(0, 100)); 
-    };
-
-    // --- 🛠️ UPDATED FETCH DATA & FEED LOGIC ---
+    // --- 🛠️ UPDATED FETCH LOGIC (Stateless Database Sync) ---
     const fetchData = async () => {
         try {
             const response = await axios.get(`${API_BASE}/api/live-monitor`);
             if (response.data.success) {
-                const currentData = response.data.data;
-                setVisitors(currentData);
+                setVisitors(response.data.data);
                 setOccupancy(response.data.occupancy);
-                let hasNewData = false;
-                
-                [...currentData].reverse().forEach(v => {
-                    // Unique keys for different types of alerts
-                    const entryKey = `${v.LogID}_entry`;
-                    const overstayKey = `${v.LogID}_overstay`;
-                    
-                    const isBanned = v.visitor?.Status === 'Banned';
-                    const isWatchlisted = v.visitor?.IsWatchlisted == 1 && !isBanned;
-                    // Check if the AI flag is an overstay flag
-                    const isOverstayFlag = v.FlagReason && v.FlagReason.includes("Overstay");
-                    const isAIFlag = v.IsFlagged == 1 && !isOverstayFlag;
-
-                    // 1. Process initial Entry / Standard Flags
-                    if (!processedLogIds.current.has(entryKey)) {
-                        processedLogIds.current.add(entryKey);
-                        hasNewData = true;
-
-                        if (isBanned) addActivity(`🚫 BANNED ENTRY: ${v.visitor?.FullName} detected!`, 'danger', v.EntryTimestamp);
-                        else if (isWatchlisted) addActivity(`⚠️ WATCHLIST: ${v.visitor?.FullName} has entered.`, 'warning', v.EntryTimestamp);
-                        else if (isAIFlag) addActivity(`🤖 AI ALERT: ${v.visitor?.FullName} - Suspicion`, 'danger', v.EntryTimestamp);
-                        else addActivity(`🟢 Entry: ${v.visitor?.FullName}`, 'success', v.EntryTimestamp);
-                    }
-
-                    // 2. Process Overstays (Can happen hours AFTER entry)
-                    if (isOverstayFlag && !processedLogIds.current.has(overstayKey)) {
-                        processedLogIds.current.add(overstayKey);
-                        hasNewData = true;
-                        addActivity(`🕒 OVERSTAY ALERT: ${v.visitor?.FullName} (> 4hrs)`, 'danger', new Date()); // Logs it at CURRENT time
-                    }
-                });
-
-                if (hasNewData) localStorage.setItem('visecure_processed_ids', JSON.stringify([...processedLogIds.current]));
+                setActivityFeed(response.data.feed); // The backend provides the fully sorted log of today's events!
             }
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error("Live Monitor Sync Error:", error); }
     };
 
     useEffect(() => { fetchData(); const interval = setInterval(fetchData, 3000); return () => clearInterval(interval); }, []);
@@ -129,8 +56,8 @@ export default function LiveDashboard() {
         if (!window.confirm(`Force exit ${selectedVisitor.visitor?.FullName}?`)) return;
         try {
             await axios.post(`${API_BASE}/api/admin/checkout`, { log_id: selectedVisitor.LogID });
-            addActivity(`🚪 FORCED EXIT: ${selectedVisitor.visitor?.FullName}`, 'neutral');
-            setSelectedVisitor(null); fetchData();
+            setSelectedVisitor(null); 
+            fetchData(); // Feed auto-updates from DB
         } catch (error) { alert("Action Failed"); }
     };
 
@@ -142,11 +69,7 @@ export default function LiveDashboard() {
                 reason: targetLevel === 'Cleared' ? 'Record Cleared' : actionReason
             });
 
-            if (targetLevel === 'Cleared') addActivity(`🟢 RECORD CLEARED: ${selectedVisitor.visitor.FullName}`, 'success');
-            else if (targetLevel === 'Watchlisted') addActivity(`⚠️ FLAGGED (GLOBAL): ${selectedVisitor.visitor.FullName} (${actionReason})`, 'warning');
-            else if (targetLevel === 'Banned') addActivity(`🚫 BANNED: ${selectedVisitor.visitor.FullName} (${actionReason})`, 'danger');
-
-            fetchData();
+            fetchData(); // Feed auto-updates from DB
             const res = await axios.get(`${API_BASE}/api/visitors/${vid}`);
             setSelectedVisitor(prev => ({...prev, visitor: res.data}));
             setInputMode(null); setActionReason("");
@@ -194,9 +117,6 @@ export default function LiveDashboard() {
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' };
     const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' };
     const modalBoxStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '16px', width: '450px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' };
-
-    // Safety Fallback for Laravel relationships
-    const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];
 
     return (
         <div className="fade-in" style={pageGrid}>
@@ -282,7 +202,7 @@ export default function LiveDashboard() {
 
             <div style={sidePanel}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom: '1px solid #374151', paddingBottom: '10px', marginBottom: '20px'}}>
-                    <h3 style={{ margin: 0 }}>⚡ Activity Log</h3>
+                    <h3 style={{ margin: 0 }}>⚡ Today's Feed</h3>
                 </div>
                 <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                     {activityFeed.map((alert) => {
@@ -290,6 +210,8 @@ export default function LiveDashboard() {
                         if (alert.type === 'danger') { msgColor = '#fca5a5'; borderColor = '#ef4444'; }
                         else if (alert.type === 'warning') { msgColor = '#fde047'; borderColor = '#eab308'; }
                         else if (alert.type === 'success') { msgColor = '#86efac'; borderColor = '#10b981'; }
+                        else if (alert.type === 'system') { msgColor = '#93c5fd'; borderColor = '#3b82f6'; }
+
                         return (
                             <div key={alert.id} className="fade-in" style={{ padding: '10px', borderLeft: `3px solid ${borderColor}`, backgroundColor: bg, borderRadius: '0 4px 4px 0' }}>
                                 <div style={{ fontSize: '10px', color: '#9ca3af', marginBottom:'2px' }}>{alert.time}</div>

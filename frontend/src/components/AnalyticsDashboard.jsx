@@ -1,49 +1,193 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement } from 'chart.js';
+import { Bar, Doughnut, Pie, Chart } from 'react-chartjs-2';
+import { MatrixController, MatrixElement } from 'chartjs-chart-matrix';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement, MatrixController, MatrixElement);
 
 export default function AnalyticsDashboard() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [autoRefresh, setAutoRefresh] = useState(false);
+    
+    // 🆕 Timeline States
     const [period, setPeriod] = useState('today');
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
 
-    // Use the environment variable so it works on Vercel automatically
-    const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_API_BASE_URL;
 
-    useEffect(() => {
-        const fetchAnalytics = async () => {
-            setLoading(true);
-            try {
-                // Fetch data with the selected PERIOD
-                const response = await axios.get(`${API_URL}/api/analytics`, {
-                    params: { period: period }
-                });
-                setData(response.data);
-                setLoading(false);
-            } catch (error) {
-                console.error("Error fetching analytics:", error);
-                setLoading(false);
+    const fetchAnalytics = async () => {
+        setLoading(true);
+        try {
+            // Include custom dates in the request if 'custom' is selected
+            const params = { period };
+            if (period === 'custom') {
+                params.start_date = customStart;
+                params.end_date = customEnd;
             }
-        };
-        fetchAnalytics();
-    }, [period]); // 👈 Re-run when filter changes
 
-    if (loading) return <div className="fade-in" style={{padding: '40px', color: '#6b7280', textAlign: 'center'}}>📊 Calculating Intelligence...</div>;
+            const response = await axios.get(`${API_URL}/api/analytics`, { params });
+            setData(response.data);
+            setLoading(false);
+        } catch (error) {
+            console.error("Error fetching analytics:", error);
+            setLoading(false);
+        }
+    };
+
+    // Auto-fetch when period changes (unless it's 'custom', then we wait for them to click 'Apply')
+    useEffect(() => {
+        if (period !== 'custom') {
+            fetchAnalytics();
+        }
+    }, [period]);
+
+    // Auto-Refresh Logic
+    useEffect(() => {
+        let interval = null;
+        if (autoRefresh) interval = setInterval(fetchAnalytics, 60000);
+        return () => { if (interval) clearInterval(interval); };
+    }, [autoRefresh, period, customStart, customEnd]);
+
+    // --- 🛠️ BULLETPROOF PDF EXPORT LOGIC ---
+    // --- 🛠️ BULLETPROOF PDF EXPORT LOGIC ---
+    // --- 🛠️ BULLETPROOF & EXPANDED PDF EXPORT LOGIC ---
+    // --- 🛠️ BULLETPROOF & EXPANDED PDF EXPORT LOGIC ---
+    const generatePDFReport = () => {
+        try {
+            const doc = new jsPDF();
+            let currentY = 22;
+
+            // Header
+            doc.setFontSize(18); 
+            doc.text("ViSecure - Intelligence Report", 14, currentY);
+            currentY += 8;
+            
+            doc.setFontSize(11); 
+            doc.setTextColor(100); 
+            const dateStr = period === 'custom' ? `${customStart} to ${customEnd}` : period.replace('_', ' ').toUpperCase();
+            doc.text(`Generated on: ${new Date().toLocaleString()} | Period: ${dateStr}`, 14, currentY);
+            currentY += 15;
+            
+            // 📊 1. OVERVIEW METRICS
+            autoTable(doc, {
+                startY: currentY,
+                head: [['Total Visits', 'Currently Active', 'Security Alerts', 'Avg Dwell Time']],
+                body: [[
+                    String(data.summary.total),
+                    String(data.summary.active),
+                    String(data.summary.alerts),
+                    String(data.summary.avg_dwell)
+                ]],
+                theme: 'grid', headStyles: { fillColor: [55, 65, 81] },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            // 👥 2. VISITOR CLASSIFICATIONS (COMBINED TABLE)
+            currentY += 12;
+            doc.setFontSize(12); doc.setTextColor(0);
+            doc.text("Visitor Demographics", 14, currentY);
+            
+            autoTable(doc, {
+                startY: currentY + 4,
+                head: [['Classification', 'Count', 'Loyalty', 'Count']],
+                body: [
+                    [
+                        data.classifications[0]?.type || '-', String(data.classifications[0]?.count || 0),
+                        'First-Time Visitors', String(data.new_vs_returning['First-Time'] || 0)
+                    ],
+                    [
+                        data.classifications[1]?.type || '-', String(data.classifications[1]?.count || 0),
+                        'Returning Visitors', String(data.new_vs_returning['Returning'] || 0)
+                    ]
+                ],
+                theme: 'striped', headStyles: { fillColor: [16, 185, 129] },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            // 🏢 3. DEPARTMENTS
+            currentY += 12;
+            doc.text("Top Departments Visited", 14, currentY);
+            
+            autoTable(doc, {
+                startY: currentY + 4,
+                head: [['Department', 'Visits']],
+                body: data.departments.map(d => [d.DepartmentToVisit || 'Unknown', String(d.count)]),
+                theme: 'striped', headStyles: { fillColor: [139, 92, 246] },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            // 🚨 4. SECURITY INCIDENTS (UNIFIED DATA CLEANER)
+            currentY += 12;
+            doc.text("Security Incident Breakdown", 14, currentY);
+            
+            // Data Cleaner: Merge old and new terms into unified Global actions
+            const cleanIncidents = {};
+            data.security_incidents.forEach(i => {
+                let action = i.Action ? i.Action.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN';
+                
+                // Unify Bans
+                if (action.includes('BAN')) action = 'BANNED (RESTRICTED ACCESS)'; 
+                
+                // Unify Flags (Global Watchlist)
+                if (action.includes('FLAG')) action = 'FLAGGED (WATCHLIST)'; 
+                
+                // Keep Overstays distinct
+                if (action.includes('OVERSTAY')) action = 'OVERSTAY ALERT';
+                
+                cleanIncidents[action] = (cleanIncidents[action] || 0) + i.count;
+            });
+
+            const incidentRows = Object.keys(cleanIncidents).map(key => [key, String(cleanIncidents[key])]);
+
+            if (incidentRows.length > 0) {
+                autoTable(doc, {
+                    startY: currentY + 4,
+                    head: [['Action / Security Alert', 'Total Count']],
+                    body: incidentRows,
+                    theme: 'striped', headStyles: { fillColor: [239, 68, 68] },
+                    didDrawPage: (d) => { currentY = d.cursor.y; }
+                });
+            } else {
+                doc.setFontSize(10); doc.setTextColor(16, 185, 129);
+                doc.text("✅ No security incidents recorded for this period.", 14, currentY + 8);
+            }
+
+            // Output the file
+            doc.save(`ViSecure_Analytics_${period}.pdf`);
+            
+        } catch (error) {
+            console.error("PDF Error: ", error);
+            alert("Failed to generate PDF. Please check the console.");
+        }
+    };
+
+    if (loading && !data) return <div className="fade-in" style={{padding: '40px', color: '#6b7280', textAlign: 'center'}}>📊 Calculating Intelligence...</div>;
     if (!data || !data.summary) return <div style={{padding: '40px', textAlign: 'center', color: '#ef4444'}}>⚠️ Database Sync Error</div>;
 
-    // --- CHART MATH ---
-    // Calculate max value dynamically to scale bars correctly
-    const maxCount = Math.max(
-        ...data.peak_hours.map(d => d.count), 
-        ...(data.predicted_hours ? Object.values(data.predicted_hours) : [0]), 
-        10 // Minimum height to prevent flat charts
-    );
+    // --- CHART.JS CONFIGURATIONS (Unchanged) ---
+    const hoursLabel = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+    const trafficData = { labels: hoursLabel, datasets: [ { label: 'Actual Visits', data: hoursLabel.map((_, i) => { const match = data.peak_hours.find(h => parseInt(h.hour) === i); return match ? match.count : 0; }), backgroundColor: '#3b82f6', borderRadius: 4 }, ...(period === 'today' && data.predicted_hours ? [{ label: 'AI Predicted', data: Object.values(data.predicted_hours), backgroundColor: '#e5e7eb', borderRadius: 4, grouped: false, order: 1 }] : []) ] };
+    const daysLabel = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; const heatmapHours = Array.from({ length: 12 }, (_, i) => i + 7); const formatHour = (h) => `${h > 12 ? h - 12 : h}${h >= 12 ? 'p' : 'a'}`; let maxHeatmapVal = 0; const matrixPoints = []; if (data.heatmap) { daysLabel.forEach(day => { heatmapHours.forEach(hour => { const count = data.heatmap[day]?.[hour] || 0; if (count > maxHeatmapVal) maxHeatmapVal = count; matrixPoints.push({ x: formatHour(hour), y: day, v: count }); }); }); }
+    const heatmapData = { datasets: [{ label: 'Visits', data: matrixPoints, backgroundColor: (ctx) => { const val = ctx.dataset.data[ctx.dataIndex]?.v || 0; return val === 0 ? '#f3f4f6' : `rgba(37, 99, 235, ${Math.max(val/maxHeatmapVal, 0.15)})`; }, width: (ctx) => ctx.chart.chartArea ? (ctx.chart.chartArea.right - ctx.chart.chartArea.left) / 12 - 4 : 0, height: (ctx) => ctx.chart.chartArea ? (ctx.chart.chartArea.bottom - ctx.chart.chartArea.top) / 7 - 4 : 0, borderRadius: 4, borderWidth: 0 }] };
+    const heatmapOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: () => null, label: (c) => `${c.raw.y} @ ${c.raw.x} : ${c.raw.v} visitors` }, displayColors: false } }, scales: { x: { type: 'category', labels: heatmapHours.map(formatHour), grid: { display: false }, border: { display: false } }, y: { type: 'category', labels: daysLabel, grid: { display: false }, border: { display: false } } } };
+    const newVsReturningData = { labels: Object.keys(data.new_vs_returning), datasets: [{ data: Object.values(data.new_vs_returning), backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0, hoverOffset: 4 }] };
+    const dwellHistData = { labels: Object.keys(data.dwell_distribution), datasets: [{ label: 'Visitors', data: Object.values(data.dwell_distribution), backgroundColor: '#0ea5e9', borderRadius: 4 }] };
+    const donutData = { labels: data.classifications.map(c => c.type), datasets: [{ data: data.classifications.map(c => c.count), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#64748b'], borderWidth: 0, hoverOffset: 4 }] };
+    const securityData = { labels: data.security_incidents.map(i => i.Action.replace(/_/g, ' ')), datasets: [{ label: 'Incidents', data: data.security_incidents.map(i => i.count), backgroundColor: '#ef4444', borderRadius: 4 }] };
+    const departmentData = { labels: data.departments.map(d => d.DepartmentToVisit), datasets: [{ label: 'Visits', data: data.departments.map(d => d.count), backgroundColor: '#8b5cf6', borderRadius: 4 }] };
+    const horizOpts = { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: true } }, scales: { x: { beginAtZero: true, grid: { color: '#f3f4f6' }, border: { display: false }, ticks: { precision: 0 } }, y: { grid: { display: false }, border: { display: false } } } };
+    const vertOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f3f4f6' }, border: { display: false }, ticks: { precision: 0 } }, x: { grid: { display: false }, border: { display: false } } } };
 
-    // --- RENDER ---
     return (
         <div className="fade-in" style={{ padding: '20px', fontFamily: 'Inter, sans-serif' }}>
             
-            {/* 1. HEADER & FILTER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+            {/* 1. HEADER & CONTROLS */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
                 <div>
                     <h2 style={{ color: '#111827', margin: 0, fontWeight: '800', letterSpacing: '-0.5px' }}>📈 Operational Intelligence</h2>
                     <p style={{ color: '#6b7280', margin: '5px 0 0 0', fontSize: '13px' }}>
@@ -51,287 +195,124 @@ export default function AnalyticsDashboard() {
                     </p>
                 </div>
 
-                {/* 🎛️ STANDARD PERIOD FILTER */}
-                <select 
-                    value={period} 
-                    onChange={(e) => setPeriod(e.target.value)}
-                    style={{
-                        padding: '10px 15px',
-                        borderRadius: '8px',
-                        border: '1px solid #d1d5db',
-                        backgroundColor: 'white',
-                        fontWeight: '600',
-                        color: '#374151',
-                        cursor: 'pointer',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        outline: 'none'
-                    }}
-                >
-                    <option value="today">📅 Today</option>
-                    <option value="yesterday">⏪ Yesterday</option>
-                    <option value="7_days">🗓️ Last 7 Days</option>
-                    <option value="30_days">📆 Last 30 Days</option>
-                    <option value="3_months">📊 Last 3 Months</option>
-                    <option value="6_months">📈 Last 6 Months</option>
-                    <option value="1_year">📅 Last 1 Year</option>
-                    <option value="all_time">🗄️ All Time</option>
-                </select>
-            </div>
+                <div style={{display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap'}}>
+                    <button onClick={() => setAutoRefresh(!autoRefresh)} style={{ padding: '10px 15px', borderRadius: '8px', backgroundColor: autoRefresh ? '#fecaca' : '#f3f4f6', color: autoRefresh ? '#b91c1c' : '#374151', border: 'none', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {autoRefresh ? <><span className="pulse-dot" style={{width:'8px',height:'8px',background:'#dc2626',borderRadius:'50%'}}></span> Auto-Refresh ON</> : '🔄 Auto-Refresh OFF'}
+                    </button>
+                    
+                    <button onClick={generatePDFReport} style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#1f2937', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                        📥 Export PDF
+                    </button>
 
-            {/* 2. KEY METRICS GRID */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
-                <MetricCard 
-                    label={period === 'today' ? "VISITS TODAY" : "TOTAL VISITS IN PERIOD"} 
-                    value={data.summary.total.toLocaleString()} 
-                    color="#3b82f6" 
-                />
-                <MetricCard 
-                    label="CURRENTLY INSIDE" 
-                    value={data.summary.active} 
-                    color="#10b981" 
-                />
-                <MetricCard 
-                    label={period === 'today' ? "ALERTS TODAY" : "TOTAL SECURITY ALERTS"} 
-                    value={data.summary.banned || 0} 
-                    color="#ef4444" 
-                />
-            </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'white', padding: '4px', borderRadius: '10px', border: '1px solid #d1d5db' }}>
+                        {/* 🆕 TIMELINE DROPDOWN */}
+                        <select 
+                            value={period} 
+                            onChange={(e) => {
+                                setPeriod(e.target.value);
+                                if(e.target.value === 'custom') { setCustomStart(''); setCustomEnd(''); }
+                            }} 
+                            style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', backgroundColor: 'transparent', fontWeight: '600', color: '#374151', cursor: 'pointer', outline: 'none' }}
+                        >
+                            <option value="today">📅 Today</option>
+                            <option value="yesterday">⏪ Yesterday</option>
+                            <option value="7_days">🗓️ Last 7 Days</option>
+                            <option value="30_days">📆 Last 30 Days</option>
+                            <option value="all_time">🗄️ All Time</option>
+                            <option value="custom">⚙️ Custom Range...</option>
+                        </select>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '20px' }}>
-                
-                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
-                    {/* 📊 TRAFFIC CHART (With AI Ghost Bars only if 'Today') */}
-                    <div style={chartBoxStyle}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}>
-                            <h3 style={{margin:0, ...chartTitleStyle}}>
-                                🕒 {period === 'today' ? "Traffic: Actual vs. Predicted" : "Historical Hourly Traffic"}
-                            </h3>
-                            {period === 'today' && (
-                                <div style={{fontSize:'10px', display:'flex', gap:'10px'}}>
-                                    <span style={{color:'#3b82f6'}}>● Actual</span>
-                                    <span style={{color:'#e5e7eb'}}>● AI Predicted</span>
-                                </div>
-                            )}
-                        </div>
-                        
-                        {/* The Chart Container */}
-                        <div style={{ display: 'flex', alignItems: 'flex-end', height: '200px', gap: '4px', paddingTop: '20px' }}>
-                            {Array.from({ length: 24 }, (_, i) => i).map((hour) => {
-                                // Find data
-                                const log = data.peak_hours.find(d => parseInt(d.hour) === hour);
-                                const actualCount = log ? log.count : 0;
-                                const predictedCount = data.predicted_hours ? data.predicted_hours[hour] : 0;
-
-                                // Calculate heights
-                                const actualHeight = (actualCount / maxCount) * 100;
-                                const predictedHeight = (predictedCount / maxCount) * 100;
-
-                                return (
-                                    <div key={hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', height: '100%' }}>
-                                        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', width: '100%', height: '100%', position: 'relative' }}>
-                                            
-                                            {/* GHOST BAR (Only show for Today to compare Real vs Expected) */}
-                                            {period === 'today' && (
-                                                <div style={{ 
-                                                    width: '60%', height: `${predictedHeight}%`, 
-                                                    backgroundColor: '#e5e7eb', borderRadius: '2px',
-                                                    position: 'absolute', bottom: 0, zIndex: 1
-                                                }} title={`AI Predicted: ${predictedCount}`}></div>
-                                            )}
-
-                                            {/* ACTUAL BAR */}
-                                            <div style={{ 
-                                                width: period === 'today' ? '40%' : '70%', 
-                                                height: `${actualHeight}%`, 
-                                                backgroundColor: '#3b82f6', 
-                                                borderRadius: '2px', zIndex: 2, opacity: 0.9,
-                                                minHeight: '4px' // Always show a baseline
-                                            }} title={`${actualCount} visits`}></div>
-                                        </div>
-                                        <span style={{ fontSize: '9px', color: '#9ca3af', fontFamily: 'monospace', marginTop: '5px' }}>
-                                            {hour % 3 === 0 ? `${hour}:00` : ''}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* 🔥 TRAFFIC HEATMAP (New Section) */}
-                    <div style={chartBoxStyle}>
-                        <h3 style={chartTitleStyle}>🔥 Weekly Traffic Heatmap</h3>
-                        {/* Only render if we have heatmap data (avoid crash on old API response) */}
-                        {data.heatmap ? (
-                            <TrafficHeatmap data={data.heatmap} />
-                        ) : (
-                            <div style={{textAlign: 'center', color: '#9ca3af', padding: '20px'}}>
-                                Select a longer time range (e.g., 7 Days) to see patterns.
+                        {/* 🆕 CUSTOM DATE INPUTS (Only visible when Custom is selected) */}
+                        {period === 'custom' && (
+                            <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderLeft: '1px solid #e5e7eb', paddingLeft: '8px' }}>
+                                <input type="date" value={customStart} onChange={(e)=>setCustomStart(e.target.value)} style={dateInputStyle} />
+                                <span style={{color: '#9ca3af', fontSize: '12px'}}>to</span>
+                                <input type="date" value={customEnd} onChange={(e)=>setCustomEnd(e.target.value)} style={dateInputStyle} />
+                                <button 
+                                    onClick={fetchAnalytics}
+                                    disabled={!customStart || !customEnd}
+                                    style={{ padding: '8px 12px', background: (!customStart || !customEnd) ? '#e5e7eb' : '#4f46e5', color: (!customStart || !customEnd) ? '#9ca3af' : 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: (!customStart || !customEnd) ? 'not-allowed' : 'pointer' }}
+                                >
+                                    Apply
+                                </button>
                             </div>
                         )}
                     </div>
                 </div>
+            </div>
 
-                {/* 🏢 DEPARTMENT & DEMOGRAPHICS (Right Column) */}
+            {/* 2. 🧠 AI EXECUTIVE INSIGHTS PANEL */}
+            <div style={{ backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '20px', marginBottom: '25px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: '#5b21b6', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>✨ AI Executive Summary</h3>
+                <ul style={{ margin: 0, paddingLeft: '20px', color: '#4c1d95', fontSize: '13.5px', lineHeight: '1.6', fontWeight: '500' }}>
+                    {data.insights.map((insight, idx) => <li key={idx}>{insight}</li>)}
+                </ul>
+            </div>
+
+            {/* 3. KEY METRICS */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
+                <MetricCard label={period === 'today' ? "VISITS TODAY" : "TOTAL VISITS"} value={data.summary.total.toLocaleString()} color="#3b82f6" />
+                <MetricCard label="CURRENTLY INSIDE" value={data.summary.active} color="#10b981" />
+                <MetricCard label="AVG. DWELL TIME" value={data.summary.avg_dwell} color="#f59e0b" />
+                <MetricCard label="SECURITY ALERTS" value={data.summary.alerts} color="#ef4444" />
+            </div>
+
+            {/* 4. MAIN CHARTS GRID */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '20px' }}>
                 <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
-                    
-                    {/* Top Departments */}
                     <div style={chartBoxStyle}>
-                        <h3 style={chartTitleStyle}>🏢 Top Departments</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {data.departments.map((dept, i) => (
-                                <div key={i}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' }}>
-                                        <span style={{ fontWeight: '600', color: '#374151' }}>{dept.DepartmentToVisit}</span>
-                                        <span style={{ color: '#6b7280' }}>{dept.count} visits</span>
-                                    </div>
-                                    <div style={{ width: '100%', height: '8px', backgroundColor: '#f3f4f6', borderRadius: '10px', overflow: 'hidden' }}>
-                                        <div style={{ 
-                                            width: `${(dept.count / data.summary.total) * 100}%`, 
-                                            height: '100%', 
-                                            backgroundColor: i === 0 ? '#8b5cf6' : '#c084fc', 
-                                            borderRadius: '10px'
-                                        }}></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        <h3 style={chartTitleStyle}>🕒 {period === 'today' ? "Traffic: Actual vs. Predicted" : "Historical Hourly Traffic"}</h3>
+                        <div style={{ height: '280px' }}><Bar data={trafficData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', align: 'end' } }, scales: { y: { beginAtZero: true, grid: { color: '#f3f4f6' }, border: { display: false } }, x: { grid: { display: false }, border: { display: false } } } }} /></div>
                     </div>
-
-                    {/* 📊 DEMOGRAPHICS */}
                     <div style={chartBoxStyle}>
-                        <h3 style={chartTitleStyle}>👥 Visitor Demographics</h3>
-                        <div style={{ display: 'flex', gap: '20px' }}>
-                            
-                            {/* Sex Distribution */}
-                            <div style={{ flex: 1 }}>
-                                <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY GENDER</h4>
-                                {data.demographics?.sex.map((item, i) => (
-                                    <div key={i} style={{marginBottom: '8px'}}>
-                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
-                                            <span>{item.Sex}</span><span>{item.count}</span>
-                                        </div>
-                                        <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
-                                            <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#ec4899', borderRadius:'3px'}}></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Age Distribution */}
-                            <div style={{ flex: 1 }}>
-                                <h4 style={{fontSize: '12px', color: '#6b7280'}}>BY AGE</h4>
-                                {data.demographics?.age.map((item, i) => (
-                                    <div key={i} style={{marginBottom: '8px'}}>
-                                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'11px'}}>
-                                            <span>{item.age_range}</span><span>{item.count}</span>
-                                        </div>
-                                        <div style={{width:'100%', height:'6px', background:'#f3f4f6', borderRadius:'3px'}}>
-                                            <div style={{width: `${(item.count / data.summary.total) * 100}%`, height:'100%', background: '#f59e0b', borderRadius:'3px'}}></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                        <h3 style={chartTitleStyle}>🔥 Weekly Traffic Heatmap</h3>
+                        <div style={{ height: '240px' }}>{matrixPoints.length > 0 ? <Chart type="matrix" data={heatmapData} options={heatmapOptions} /> : <div style={{textAlign: 'center', color: '#9ca3af', padding: '20px'}}>No heatmap data available.</div>}</div>
+                    </div>
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>⏳ Dwell Time Distribution</h3>
+                        <div style={{ height: '180px' }}><Bar data={dwellHistData} options={vertOpts} /></div>
                     </div>
                 </div>
 
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>🔄 First-Time vs. Returning</h3>
+                        <div style={{ height: '160px', display: 'flex', justifyContent: 'center' }}>
+                            <Doughnut data={newVsReturningData} options={{ maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: {size: 11} } } } }} />
+                        </div>
+                    </div>
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>🆔 Visitor Classification</h3>
+                        <div style={{ height: '180px', display: 'flex', justifyContent: 'center' }}>
+                            {data.classifications.length > 0 ? <Doughnut data={donutData} options={{ maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: {size: 11} } } } }} /> : <span style={{color: '#9ca3af', alignSelf: 'center'}}>No data available</span>}
+                        </div>
+                    </div>
+                    <div style={{...chartBoxStyle, borderTop: '4px solid #ef4444'}}>
+                        <h3 style={{...chartTitleStyle, color: '#b91c1c'}}>🚨 Security Incidents</h3>
+                        <div style={{ height: '180px' }}>
+                            {data.security_incidents.length > 0 ? <Bar data={securityData} options={horizOpts} /> : <div style={{ fontSize: '13px', color: '#10b981', textAlign: 'center', padding: '10px 0' }}>✅ No security incidents recorded.</div>}
+                        </div>
+                    </div>
+                    <div style={chartBoxStyle}>
+                        <h3 style={chartTitleStyle}>🏢 Top Departments</h3>
+                        <div style={{ height: '220px' }}>
+                            {data.departments.length > 0 ? <Bar data={departmentData} options={horizOpts} /> : <div style={{textAlign: 'center', color: '#9ca3af', padding: '20px'}}>No department data.</div>}
+                        </div>
+                    </div>
+                </div>
             </div>
-
         </div>
     );
 }
 
 // --- SUB-COMPONENTS & STYLES ---
-
 const MetricCard = ({ label, value, color }) => (
-    <div style={{
-        backgroundColor: 'white',
-        padding: '24px',
-        borderRadius: '16px',
-        borderLeft: `6px solid ${color}`,
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-    }}>
-        <span style={{ fontSize: '12px', fontWeight: '700', color: '#6b7280', letterSpacing: '0.05em' }}>{label}</span>
-        <h2 style={{ fontSize: '36px', fontWeight: '800', margin: '8px 0 0 0', color: '#111827' }}>{value}</h2>
+    <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '16px', borderLeft: `6px solid ${color}`, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+        <span style={{ fontSize: '11px', fontWeight: '700', color: '#6b7280', letterSpacing: '0.05em' }}>{label}</span>
+        <h2 style={{ fontSize: '32px', fontWeight: '800', margin: '8px 0 0 0', color: '#111827' }}>{value}</h2>
     </div>
 );
 
-// 🔥 HEATMAP COMPONENT
-const TrafficHeatmap = ({ data }) => {
-    if (!data || Object.keys(data).length === 0) return <div className="p-4 text-gray-500 text-center text-sm">No traffic data for this period</div>;
-
-    const hours = Array.from({ length: 12 }, (_, i) => i + 7); // 7, 8, ..., 18
-    const days = Object.keys(data); // Mon, Tue...
-    
-    // Find max value to scale colors opacity
-    let maxVal = 0;
-    days.forEach(d => {
-        Object.values(data[d]).forEach(v => maxVal = Math.max(maxVal, v));
-    });
-
-    const getColor = (value) => {
-        if (value === 0) return '#f3f4f6'; // Gray-100 (Empty)
-        const intensity = maxVal > 0 ? (value / maxVal) : 0;
-        // Blue scale (Tailwind blue-600 base)
-        return `rgba(37, 99, 235, ${Math.max(intensity, 0.1)})`;
-    };
-
-    return (
-        <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '40px repeat(12, 1fr)', gap: '4px', minWidth: '100%' }}>
-                {/* Header Row (Hours) */}
-                <div />
-                {hours.map(h => (
-                    <div key={h} style={{ fontSize: '10px', textAlign: 'center', color: '#9ca3af', fontWeight: 'bold' }}>
-                        {h > 12 ? h - 12 : h}{h >= 12 ? 'p' : 'a'}
-                    </div>
-                ))}
-
-                {/* Rows (Days) */}
-                {days.map(day => (
-                    <React.Fragment key={day}>
-                        {/* Day Label */}
-                        <div style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', alignSelf: 'center' }}>
-                            {day}
-                        </div>
-                        
-                        {/* Cells */}
-                        {hours.map(h => {
-                            const count = data[day][h] || 0;
-                            return (
-                                <div 
-                                    key={`${day}-${h}`}
-                                    title={`${day} @ ${h}:00 - ${count} visitors`}
-                                    style={{
-                                        backgroundColor: getColor(count),
-                                        height: '24px',
-                                        borderRadius: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '9px',
-                                        color: count > (maxVal / 2) ? 'white' : 'transparent', // Hide numbers unless busy
-                                        fontWeight: 'bold',
-                                        cursor: 'default'
-                                    }}
-                                >
-                                    {count > 0 ? count : ''}
-                                </div>
-                            );
-                        })}
-                    </React.Fragment>
-                ))}
-            </div>
-            
-            {/* Legend */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', fontSize: '10px', color: '#9ca3af', justifyContent: 'flex-end' }}>
-                <span>Less</span>
-                <div style={{ width: '60px', height: '6px', background: 'linear-gradient(to right, #eff6ff, #2563eb)', borderRadius: '4px' }} />
-                <span>More</span>
-            </div>
-        </div>
-    );
-};
-
 const chartBoxStyle = { backgroundColor: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' };
-const chartTitleStyle = { margin: '0 0 20px 0', fontSize: '16px', fontWeight: '700', color: '#374151' };
+const chartTitleStyle = { margin: '0 0 20px 0', fontSize: '14px', fontWeight: '700', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' };
+const dateInputStyle = { padding: '6px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '12px', outline: 'none', color: '#374151' };
