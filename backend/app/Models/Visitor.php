@@ -15,6 +15,7 @@ class Visitor extends Model
         'FirstName', 
         'MiddleName',
         'Surname', 
+        'FullName', // 👈 ADDED THIS LINE
         'Age', 
         'Sex', 
         'VisitorType', 

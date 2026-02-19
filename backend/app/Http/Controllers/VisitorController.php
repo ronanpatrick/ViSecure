@@ -280,6 +280,10 @@ class VisitorController extends Controller
                 'FirstName'     => $validated['FirstName'],
                 'MiddleName'    => $request->MiddleName ?? '', 
                 'Surname'       => $validated['Surname'],
+                
+                // 🆕 ADD THIS LINE BELOW: Combine them for the DB requirement
+                'FullName'      => trim($validated['FirstName'] . ' ' . $validated['Surname']), 
+                
                 'Age'           => $request->Age,
                 'Sex'           => $request->Sex,
                 'VisitorType'   => $validated['VisitorType'],   
@@ -316,6 +320,26 @@ class VisitorController extends Controller
             'IsFlagged'           => $isFlagged 
         ]);
 
+        // 📝 NEW: Record the physical entry in the Security Audit Trail
+        SecurityLog::create([
+            'VisitorID' => $visitor->VisitorID,
+            'LogID'     => $log->LogID ?? $log->id,
+            'Action'    => 'SYSTEM_ENTRY',
+            'Reason'    => 'Visitor checked in successfully',
+            'Officer'   => 'System'
+        ]);
+
+        // 🚨 NEW: If flagged by AI, instantly push a Suspicion Alert to the trail
+        if ($isFlagged) {
+            SecurityLog::create([
+                'VisitorID' => $visitor->VisitorID,
+                'LogID'     => $log->LogID ?? $log->id,
+                'Action'    => 'AI_SUSPICION_FLAG',
+                'Reason'    => 'Purpose of visit automatically flagged by AI',
+                'Officer'   => 'AI System'
+            ]);
+        }
+
         return response()->json([
             'message' => $isNewUser ? 'Registration Complete!' : 'Welcome back!',
             'visitor_name' => $visitor->FullName,
@@ -323,7 +347,7 @@ class VisitorController extends Controller
             'watchlist_warning' => $visitor->IsWatchlisted ?? false, 
             'watchlist_reason' => $visitor->WatchlistReason ?? null,
             'visitor_id' => $visitor->VisitorID,
-            'log_id' => $log->id,
+            'log_id' => $log->LogID, // 👈 CHANGE THIS TO LogID
             'is_flagged' => $isFlagged, 
             'warning_message' => $isFlagged ? "⚠️ Monitor: Purpose flagged as suspicious." : null
         ], 201);
@@ -348,20 +372,23 @@ class VisitorController extends Controller
         return response()->json(Visitor::with('logs')->orderBy('created_at', 'desc')->get());
     }
     
-    // 🚪 FORCE CHECKOUT (With Audit Trail)
+    // 🚪 CHECKOUT (Handles both Admin Force Exit and Visitor Self-Checkout)
     public function checkout(Request $request) {
         $log = VisitLog::find($request->log_id);
         if (!$log || $log->ExitTimestamp) return response()->json(['message' => 'Error'], 400);
         
         $log->update(['ExitTimestamp' => now(), 'Status' => 'Completed']);
 
+        // Check if the frontend told us this is a self-checkout
+        $isSelfCheckout = $request->input('method') === 'self';
+
         // 📝 RECORD AUDIT LOG
         SecurityLog::create([
             'VisitorID' => $log->VisitorID,
-            'LogID'     => $log->LogID,
-            'Action'    => 'FORCE_EXIT',
-            'Reason'    => 'Admin Forced Checkout',
-            'Officer'   => 'Admin'
+            'LogID'     => $log->LogID ?? $log->id,
+            'Action'    => $isSelfCheckout ? 'VISITOR_EXIT' : 'FORCE_EXIT',
+            'Reason'    => $isSelfCheckout ? 'Visitor checked out successfully' : 'Admin Forced Checkout',
+            'Officer'   => $isSelfCheckout ? 'System' : 'Admin'
         ]);
 
         return response()->json(['message' => 'Checked out']);
@@ -378,8 +405,13 @@ class VisitorController extends Controller
     public function show($id)
     {
         $visitor = Visitor::with([
-            'logs' => function($query) { $query->orderBy('EntryTimestamp', 'desc'); },
-            'securityLogs' => function($query) { $query->orderBy('created_at', 'desc'); } // 👈 NEW
+            'logs' => function($query) { 
+                $query->orderBy('EntryTimestamp', 'desc'); 
+            },
+            'securityLogs' => function($query) { 
+                // ⏱️ THE FIX: Add a tie-breaker so AI Flags always appear ABOVE the Entry in a descending timeline!
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc'); 
+            }
         ])->find($id);
 
         if (!$visitor) return response()->json(['message' => 'Visitor not found'], 404);

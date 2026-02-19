@@ -29,7 +29,8 @@ export default function SelfCheckout() {
                 setStatus('Processing your checkout...');
                 
                 await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/admin/checkout`, {
-                    log_id: visitId
+                    log_id: visitId,
+                    method: 'self' // 👈 NEW: Tells the database the visitor did this
                 });
 
                 // Success

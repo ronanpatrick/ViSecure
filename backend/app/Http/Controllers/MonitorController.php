@@ -39,14 +39,24 @@ class MonitorController extends Controller
                     $isOverstayFlag = $log->FlagReason && str_contains($log->FlagReason, 'Overstay');
                     $isAIFlag = $log->IsFlagged == 1 && !$isOverstayFlag;
 
+                    // 1. ALWAYS log the physical entry for EVERYONE
+                    $feed[] = [
+                        'id' => $log->LogID . '_entry', 
+                        'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 
+                        'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 
+                        'msg' => "🟢 Entry: {$visitorName}", 
+                        'type' => 'success'
+                    ];
+
+                    // 2. SEPARATELY log the security flags (+1 to timestamp so it appears above the entry in the feed)
+                    $alertTime = Carbon::parse($log->EntryTimestamp)->timestamp + 1;
+                    
                     if ($isBanned) {
-                        $feed[] = ['id' => $log->LogID . '_entry', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 'msg' => "🚫 BANNED ENTRY: {$visitorName} detected!", 'type' => 'danger'];
+                        $feed[] = ['id' => $log->LogID . '_alert_ban', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "🚫 BANNED: {$visitorName} detected!", 'type' => 'danger'];
                     } elseif ($isWatchlisted) {
-                        $feed[] = ['id' => $log->LogID . '_entry', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 'msg' => "⚠️ WATCHLIST: {$visitorName} has entered.", 'type' => 'warning'];
+                        $feed[] = ['id' => $log->LogID . '_alert_watch', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "⚠️ WATCHLIST: {$visitorName} is on premises.", 'type' => 'warning'];
                     } elseif ($isAIFlag) {
-                        $feed[] = ['id' => $log->LogID . '_entry', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 'msg' => "🤖 AI ALERT: {$visitorName} - Suspicion", 'type' => 'danger'];
-                    } else {
-                        $feed[] = ['id' => $log->LogID . '_entry', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 'msg' => "🟢 Entry: {$visitorName}", 'type' => 'success'];
+                        $feed[] = ['id' => $log->LogID . '_alert_ai', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "🤖 AI ALERT: {$visitorName} - Suspicion", 'type' => 'danger'];
                     }
 
                     // Process Overstay Flag
@@ -64,6 +74,8 @@ class MonitorController extends Controller
             // B. Security Log Events (Global Bans, Clearances, Manual Flags today)
             $securityLogs = \App\Models\SecurityLog::with('visitor')
                 ->whereDate('created_at', $today)
+                // 🛑 IGNORE BACKGROUND LOGS: Don't show system entries/exits in the Security Feed
+                ->whereNotIn('Action', ['SYSTEM_ENTRY', 'AI_SUSPICION_FLAG', 'VISITOR_EXIT']) 
                 ->get();
 
             foreach ($securityLogs as $sec) {
@@ -72,7 +84,7 @@ class MonitorController extends Controller
                 
                 $type = 'warning';
                 if (str_contains($action, 'BAN') || str_contains($action, 'OVERSTAY')) $type = 'danger';
-                if (str_contains($action, 'CLEAR')) $type = 'success';
+                if (str_contains($action, 'CLEAR') || str_contains($action, 'UNBAN') || str_contains($action, 'UNFLAG')) $type = 'success';
 
                 $feed[] = [
                     'id' => 'sec_' . $sec->id,
