@@ -6,11 +6,9 @@ export default function LiveDashboard() {
     const [occupancy, setOccupancy] = useState(0);
     const [capacity] = useState(50); 
     
-    // 🔍 SEARCH & FILTER STATE
     const [searchTerm, setSearchTerm] = useState("");
     const [filterType, setFilterType] = useState("all"); 
 
-    // 🕒 CONFIG & STATE
     const SESSION_DURATION = 24 * 60 * 60 * 1000; 
     const [currentTime, setCurrentTime] = useState(new Date());
     
@@ -18,6 +16,7 @@ export default function LiveDashboard() {
         const savedFeed = localStorage.getItem('visecure_activity_feed');
         return savedFeed ? JSON.parse(savedFeed) : [];
     });
+    
     const processedLogIds = useRef(new Set());
 
     useEffect(() => {
@@ -25,9 +24,8 @@ export default function LiveDashboard() {
         if (savedIds) processedLogIds.current = new Set(JSON.parse(savedIds));
     }, []);
 
-    // 🛠️ MODAL & ACTION STATES
     const [selectedVisitor, setSelectedVisitor] = useState(null);
-    const [inputMode, setInputMode] = useState(null); // 'watchlist' | 'ban'
+    const [inputMode, setInputMode] = useState(null); 
     const [actionReason, setActionReason] = useState(""); 
 
     const API_BASE = import.meta.env.VITE_API_BASE_URL;
@@ -38,7 +36,6 @@ export default function LiveDashboard() {
 
     useEffect(() => { localStorage.setItem('visecure_activity_feed', JSON.stringify(activityFeed)); }, [activityFeed]);
 
-    // 🕒 SESSION MANAGER
     useEffect(() => {
         const checkSession = () => {
             const savedStart = localStorage.getItem('visecure_session_start');
@@ -66,7 +63,7 @@ export default function LiveDashboard() {
         setActivityFeed(prev => [newLog, ...prev].slice(0, 100)); 
     };
 
-    // --- FETCH DATA & RECOGNIZE THREATS ---
+    // --- 🛠️ UPDATED FETCH DATA & FEED LOGIC ---
     const fetchData = async () => {
         try {
             const response = await axios.get(`${API_BASE}/api/live-monitor`);
@@ -77,20 +74,35 @@ export default function LiveDashboard() {
                 let hasNewData = false;
                 
                 [...currentData].reverse().forEach(v => {
-                    if (!processedLogIds.current.has(v.LogID)) {
-                        processedLogIds.current.add(v.LogID);
+                    // Unique keys for different types of alerts
+                    const entryKey = `${v.LogID}_entry`;
+                    const overstayKey = `${v.LogID}_overstay`;
+                    
+                    const isBanned = v.visitor?.Status === 'Banned';
+                    const isWatchlisted = v.visitor?.IsWatchlisted == 1 && !isBanned;
+                    // Check if the AI flag is an overstay flag
+                    const isOverstayFlag = v.FlagReason && v.FlagReason.includes("Overstay");
+                    const isAIFlag = v.IsFlagged == 1 && !isOverstayFlag;
+
+                    // 1. Process initial Entry / Standard Flags
+                    if (!processedLogIds.current.has(entryKey)) {
+                        processedLogIds.current.add(entryKey);
                         hasNewData = true;
-                        
-                        const isBanned = v.visitor?.Status === 'Banned';
-                        const isWatchlisted = v.visitor?.IsWatchlisted == 1 && !isBanned;
-                        const isAIFlag = v.IsFlagged == 1;
 
                         if (isBanned) addActivity(`🚫 BANNED ENTRY: ${v.visitor?.FullName} detected!`, 'danger', v.EntryTimestamp);
                         else if (isWatchlisted) addActivity(`⚠️ WATCHLIST: ${v.visitor?.FullName} has entered.`, 'warning', v.EntryTimestamp);
                         else if (isAIFlag) addActivity(`🤖 AI ALERT: ${v.visitor?.FullName} - Suspicion`, 'danger', v.EntryTimestamp);
                         else addActivity(`🟢 Entry: ${v.visitor?.FullName}`, 'success', v.EntryTimestamp);
                     }
+
+                    // 2. Process Overstays (Can happen hours AFTER entry)
+                    if (isOverstayFlag && !processedLogIds.current.has(overstayKey)) {
+                        processedLogIds.current.add(overstayKey);
+                        hasNewData = true;
+                        addActivity(`🕒 OVERSTAY ALERT: ${v.visitor?.FullName} (> 4hrs)`, 'danger', new Date()); // Logs it at CURRENT time
+                    }
                 });
+
                 if (hasNewData) localStorage.setItem('visecure_processed_ids', JSON.stringify([...processedLogIds.current]));
             }
         } catch (error) { console.error(error); }
@@ -99,7 +111,6 @@ export default function LiveDashboard() {
     useEffect(() => { fetchData(); const interval = setInterval(fetchData, 3000); return () => clearInterval(interval); }, []);
     useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
 
-    // --- FILTERS ---
     const getDurationHours = (entryTime) => (currentTime - new Date(entryTime)) / 36e5;
     
     const filteredVisitors = visitors.filter(log => {
@@ -114,7 +125,6 @@ export default function LiveDashboard() {
     const riskCount = visitors.filter(v => v.IsFlagged == 1 || v.visitor?.IsWatchlisted == 1 || v.visitor?.Status === 'Banned').length;
     const overstayCount = visitors.filter(v => getDurationHours(v.EntryTimestamp) > 4).length;
 
-    // --- 🚪 FORCE EXIT ---
     const handleForceCheckout = async () => {
         if (!window.confirm(`Force exit ${selectedVisitor.visitor?.FullName}?`)) return;
         try {
@@ -124,7 +134,6 @@ export default function LiveDashboard() {
         } catch (error) { alert("Action Failed"); }
     };
 
-    // --- 🌍 UNIFIED GLOBAL CLEARANCE ACTION ---
     const handleGlobalClearance = async (targetLevel) => {
         const vid = selectedVisitor.visitor.VisitorID;
         try {
@@ -144,7 +153,6 @@ export default function LiveDashboard() {
         } catch (error) { alert("Action failed."); }
     };
 
-    // --- UI HELPERS ---
     const formatDuration = (entryTime) => {
         const diff = Math.floor((currentTime - new Date(entryTime)) / 1000);
         const h = Math.floor(diff / 3600); const m = Math.floor((diff % 3600) / 60);
@@ -186,6 +194,9 @@ export default function LiveDashboard() {
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' };
     const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' };
     const modalBoxStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '16px', width: '450px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' };
+
+    // Safety Fallback for Laravel relationships
+    const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];
 
     return (
         <div className="fade-in" style={pageGrid}>

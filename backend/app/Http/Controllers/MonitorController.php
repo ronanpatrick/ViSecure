@@ -11,13 +11,10 @@ class MonitorController extends Controller
     public function getLiveStats()
     {
         try {
-            $today = Carbon::today();
-
             // 1. ACTIVE VISITORS (Currently Inside)
-            // We fetch the visitor details AND the log details (PurposeOfVisit is in the log)
+            // Removed whereDate restriction so overnight overstayers still show up
             $activeVisitors = VisitLog::with('visitor')
                 ->whereNull('ExitTimestamp')
-                ->whereDate('EntryTimestamp', $today)
                 ->orderBy('EntryTimestamp', 'desc')
                 ->get();
 

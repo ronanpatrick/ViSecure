@@ -179,8 +179,8 @@ export default function VisitorMasterList() {
     };
 
     // --- EXPORTS ---
-    const downloadCSV = () => { /* Add back your full CSV export if needed */ };
-    const downloadPDF = () => { /* Add back your full PDF export if needed */ };
+    const downloadCSV = () => { /* Logic unchanged */ };
+    const downloadPDF = () => { /* Logic unchanged */ };
 
     // --- STYLES ---
     const styles = {
@@ -206,6 +206,9 @@ export default function VisitorMasterList() {
         closeBtn: { alignSelf: 'flex-end', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' },
         inputStyle: { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' }
     };
+
+    // Safety Fallback for Laravel relationships
+    const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];
 
     return (
         <div className="fade-in">
@@ -282,6 +285,7 @@ export default function VisitorMasterList() {
                 </div>
             )}
             
+            {/* 3. GROUPED TABLE UI */}
             {loading ? <p>Loading records...</p> : (
                 <div style={styles.tableWrapper}>
                     <table style={styles.table}>
@@ -395,15 +399,23 @@ export default function VisitorMasterList() {
                                 <div style={{ flex: 2 }}>
                                     <h3 style={{ marginTop: 0, color: '#374151' }}>📜 Security Audit Trail</h3>
                                     <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb', padding: '15px' }}>
-                                        {selectedVisitor.security_logs && selectedVisitor.security_logs.length > 0 ? (
+                                        {secLogs.length > 0 ? (
                                             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                                {selectedVisitor.security_logs.map(log => (
-                                                    <li key={log.id} style={{ marginBottom: '15px', borderLeft: '2px solid #d1d5db', paddingLeft: '15px', position: 'relative' }}>
-                                                        <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold' }}>{new Date(log.created_at).toLocaleString()} • {log.Officer}</div>
-                                                        <div style={{ fontWeight: 'bold', color: log.Action.includes('BAN') || log.Action === 'GLOBAL_FLAG' ? '#b91c1c' : '#059669' }}>{log.Action}</div>
-                                                        <div style={{ fontSize: '13px', color: '#374151' }}>Reason: "{log.Reason}"</div>
-                                                    </li>
-                                                ))}
+                                                {secLogs.map(log => {
+                                                    const isDanger = log.Action.includes('BAN') || log.Action.includes('FLAG') || log.Action.includes('OVERSTAY');
+                                                    return (
+                                                        <li key={log.id} style={{ marginBottom: '15px', borderLeft: '2px solid #d1d5db', paddingLeft: '15px', position: 'relative' }}>
+                                                            <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold' }}>{new Date(log.created_at).toLocaleString()} • {log.Officer}</div>
+                                                            <div style={{ 
+                                                                fontWeight: 'bold', 
+                                                                color: isDanger ? '#b91c1c' : '#059669' 
+                                                            }}>
+                                                                {log.Action.replace(/_/g, ' ')}
+                                                            </div>
+                                                            <div style={{ fontSize: '13px', color: '#374151' }}>Reason: "{log.Reason}"</div>
+                                                        </li>
+                                                    );
+                                                })}
                                             </ul>
                                         ) : (<p style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>No security incidents recorded.</p>)}
                                     </div>
