@@ -89,54 +89,121 @@ export default function LiveDashboard() {
         const isWatchlisted = log.visitor?.IsWatchlisted == 1 && !isBanned;
         const isAIFlag = log.IsFlagged == 1;
 
-        if (isBanned) return { backgroundColor: '#fee2e2', borderLeft: '6px solid #b91c1c', cursor: 'pointer' }; 
-        if (isAIFlag) return { backgroundColor: '#fee2e2', borderLeft: '6px solid #ef4444', cursor: 'pointer' }; 
-        if (h > 4) return { backgroundColor: '#fee2e2', borderLeft: '6px solid #ef4444', cursor: 'pointer' }; 
-        if (isWatchlisted) return { backgroundColor: '#fef3c7', borderLeft: '6px solid #d97706', cursor: 'pointer' }; 
-        return { backgroundColor: 'white', borderLeft: '6px solid transparent', cursor: 'pointer', transition: 'all 0.2s' };
+        if (isBanned) return { 
+          backgroundColor: '#fef2f2', 
+          borderLeft: '4px solid #dc2626', 
+          cursor: 'pointer',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(220,38,38,0.1)',
+          transition: 'all 0.3s ease'
+        }; 
+        if (isAIFlag) return { 
+          backgroundColor: '#fef2f2', 
+          borderLeft: '4px solid #f97316', 
+          cursor: 'pointer',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(249,115,22,0.1)',
+          transition: 'all 0.3s ease'
+        }; 
+        if (h > 4) return { 
+          backgroundColor: '#fef3c7', 
+          borderLeft: '4px solid #f97316', 
+          cursor: 'pointer',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(249,115,22,0.1)',
+          transition: 'all 0.3s ease'
+        }; 
+        if (isWatchlisted) return { 
+          backgroundColor: '#fef9c3', 
+          borderLeft: '4px solid #eab308', 
+          cursor: 'pointer',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(234,179,8,0.1)',
+          transition: 'all 0.3s ease'
+        }; 
+        return { 
+          backgroundColor: 'white', 
+          borderLeft: '4px solid #10b981', 
+          cursor: 'pointer', 
+          transition: 'all 0.3s ease',
+          borderRadius: '12px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        };
     };
 
     const ChipButton = ({ label, count, active, type, onClick }) => {
-        let baseColor = '#e5e7eb'; let activeColor = '#1f2937'; let textColor = '#374151'; let activeText = 'white';
-        if (type === 'risk') { baseColor = '#fee2e2'; activeColor = '#dc2626'; textColor = '#b91c1c'; }
-        if (type === 'overstay') { baseColor = '#ffedd5'; activeColor = '#ea580c'; textColor = '#9a3412'; }
+        let baseColor = '#f1f5f9'; let activeColor = '#2563eb'; let textColor = '#64748b'; let activeText = 'white';
+        let baseBorder = '#cbd5e1'; let activeBorder = '#2563eb'; let borderColor = baseBorder;
+        if (type === 'risk') { baseColor = '#fee2e2'; activeColor = '#dc2626'; textColor = '#7f1d1d'; activeBorder = '#dc2626'; baseBorder = '#fecaca'; }
+        if (type === 'overstay') { baseColor = '#fef3c7'; activeColor = '#f97316'; textColor = '#92400e'; activeBorder = '#f97316'; baseBorder = '#fde68a'; }
         return (
-            <button onClick={onClick} style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px', backgroundColor: active ? activeColor : baseColor, color: active ? activeText : textColor }}>
-                {label} {count > 0 && <span style={{ opacity: 0.8, fontSize: '0.9em', marginLeft: '4px' }}>({count})</span>}
+            <button onClick={onClick} style={{ padding: '10px 18px', borderRadius: '12px', border: `1.5px solid ${active ? activeBorder : borderColor}`, fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)', marginRight: '10px', backgroundColor: active ? activeColor : baseColor, color: active ? activeText : textColor, boxShadow: active ? '0 4px 12px rgba(37,99,235,0.3)' : '0 1px 3px rgba(0,0,0,0.05)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                {label} {count > 0 && <span style={{ marginLeft: '6px', opacity: 0.85, fontSize: '0.85em', fontWeight: '800' }}>({count})</span>}
             </button>
         );
     };
 
-    // --- STYLES ---
-    const pageGrid = { display: 'grid', gridTemplateColumns: '3.5fr 1fr', gap: '20px', height: '85vh' };
-    const mainPanel = { backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflowY: 'auto' };
-    const sidePanel = { backgroundColor: '#1f2937', borderRadius: '12px', padding: '20px', color: 'white', display: 'flex', flexDirection: 'column', overflowY: 'auto' };
-    const tableStyle = { width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', fontSize: '14px' };
-    const thStyle = { textAlign: 'left', padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontSize: '12px', textTransform:'uppercase' };
-    const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'middle' };
-    const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' };
-    const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' };
-    const modalBoxStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '16px', width: '450px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' };
+    // --- 2026 ENTERPRISE SECURITY COMMAND CENTER DESIGN SYSTEM ---
+    const pageGrid = { display: 'grid', gridTemplateColumns: '3.5fr 1fr', gap: '24px', height: '85vh', padding: '0', margin: '0' };
+    const mainPanel = { 
+      backgroundColor: '#f8fafc', 
+      borderRadius: '20px', 
+      padding: '28px', 
+      boxShadow: '0 20px 25px -5px rgba(0,0,0,0.08)', 
+      overflowY: 'auto',
+      border: '1px solid rgba(203,213,225,0.4)',
+      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
+    };
+    const sidePanel = { 
+      backgroundColor: '#0f172a', 
+      borderRadius: '20px', 
+      padding: '24px', 
+      color: '#e2e8f0', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflowY: 'auto',
+      border: '1px solid rgba(30,41,59,0.6)',
+      boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2), inset 0 1px 0 rgba(71,85,105,0.1)',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+    };
+    const tableStyle = { width: '100%', borderCollapse: 'separate', borderSpacing: '0 12px', fontSize: '14px' };
+    const thStyle = { 
+      textAlign: 'left', 
+      padding: '14px 16px', 
+      borderBottom: '2px solid #cbd5e1', 
+      color: '#475569', 
+      fontSize: '11px', 
+      textTransform:'uppercase',
+      fontWeight: '700',
+      letterSpacing: '0.5px'
+    };
+    const tdStyle = { padding: '14px 16px', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' };
+    const inputStyle = { width: '100%', padding: '12px 14px', borderRadius: '10px', fontSize:'13px', boxSizing: 'border-box', marginTop:'8px', outline:'none', border: '1.5px solid #cbd5e1', backgroundColor: 'white', color: '#0f172a', transition: 'all 0.3s ease' };
+    const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(12px)' };
+    const modalBoxStyle = { backgroundColor: 'white', padding: '32px', borderRadius: '20px', width: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25), 0 0 0 1px rgba(203,213,225,0.2)', border: '1px solid #e2e8f0' };
 
     return (
         <div className="fade-in" style={pageGrid}>
             <div style={mainPanel}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', paddingBottom: '20px', borderBottom: '2px solid #cbd5e1' }}>
                     <div>
-                        <h2 style={{ margin: 0 }}>👁️ Live Monitor</h2>
-                        <span style={{ color: '#6b7280', fontSize: '14px' }}>Real-time AI surveillance</span>
+                        <h2 style={{ margin: '0 0 6px 0', fontSize: '28px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.5px' }}>🎯 Live Monitor</h2>
+                        <span style={{ color: '#64748b', fontSize: '13px', fontWeight: '500' }}>Real-time AI facial recognition & occupancy tracking</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                        <input type="text" placeholder="🔍 Search active visitors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', width: '220px', outline: 'none' }} />
-                        <div style={{ fontSize: '32px', fontWeight: 'bold', color: occupancy > capacity ? '#ef4444' : '#10b981' }}>{occupancy} <span style={{fontSize: '16px', color: '#9ca3af'}}>/ {capacity}</span></div>
+                    <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
+                        <input type="text" placeholder="Search visitors by name, dept, purpose..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '11px 16px', borderRadius: '12px', border: '1.5px solid #cbd5e1', fontSize: '13px', width: '280px', outline: 'none', backgroundColor: 'white', color: '#0f172a', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }} onFocus={(e) => e.target.style.borderColor = '#2563eb'} onBlur={(e) => e.target.style.borderColor = '#cbd5e1'} />
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px', backgroundColor: 'white', borderRadius: '14px', border: '1px solid #cbd5e1', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                            <div style={{ fontSize: '32px', fontWeight: '900', color: occupancy > capacity ? '#dc2626' : '#059669', letterSpacing: '-1px' }}>{occupancy}</div>
+                            <div style={{fontSize: '11px', color: '#64748b', fontWeight: '600', marginTop: '2px'}}>CAPACITY {occupancy > capacity ? '⚠️ EXCEEDED' : '✓ SAFE'} • {capacity} max</div>
+                        </div>
                     </div>
                 </div>
 
-                <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginRight: '10px', textTransform: 'uppercase' }}>Filters:</span>
+                <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: '#475569', marginRight: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>📊 Filter:</span>
                     <ChipButton label="All Active" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
-                    <ChipButton label="⚠️ High Risk" count={riskCount} active={filterType === 'risk'} type="risk" onClick={() => setFilterType('risk')} />
-                    <ChipButton label="🕒 Overstaying" count={overstayCount} active={filterType === 'overstay'} type="overstay" onClick={() => setFilterType('overstay')} />
+                    <ChipButton label="🚨 High Risk" count={riskCount} active={filterType === 'risk'} type="risk" onClick={() => setFilterType('risk')} />
+                    <ChipButton label="⏱️ Overstaying" count={overstayCount} active={filterType === 'overstay'} type="overstay" onClick={() => setFilterType('overstay')} />
                 </div>
 
                 <table style={tableStyle}>
@@ -151,7 +218,7 @@ export default function LiveDashboard() {
                     </thead>
                     <tbody>
                         {filteredVisitors.length === 0 ? (
-                            <tr><td colSpan="5" style={{padding: '40px', textAlign: 'center', color: '#9ca3af'}}>{searchTerm || filterType !== 'all' ? "No matching visitors found." : "Building is empty."}</td></tr>
+                            <tr><td colSpan="5" style={{padding: '60px 40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px', fontWeight: '500'}}>{searchTerm || filterType !== 'all' ? "🔍 No matching visitors found." : "✓ Building is empty"}</td></tr>
                         ) : (
                             filteredVisitors.map(log => {
                                 const rowStyle = getRowStyle(log);
@@ -161,35 +228,35 @@ export default function LiveDashboard() {
                                 const isOverstay = getDurationHours(log.EntryTimestamp) > 4;
 
                                 return (
-                                    <tr key={log.LogID} style={rowStyle} onClick={() => setSelectedVisitor(log)} className="hover-scale" title="Click to manage">
-                                        <td style={{...tdStyle, textAlign: 'center', fontSize: '18px'}}>
-                                            {isBanned && <span title="Banned User">🚫</span>}
-                                            {!isBanned && isWatchlisted && <span title="Global Watchlist">⚠️</span>}
-                                            {isAIFlag && <span title="AI Suspicion">🤖</span>}
-                                            {!isBanned && !isWatchlisted && !isAIFlag && <div style={{width:'8px', height:'8px', background:'#10b981', borderRadius:'50%', margin:'0 auto', opacity:0.3}}></div>}
+                                    <tr key={log.LogID} style={rowStyle} onClick={() => setSelectedVisitor(log)} className="hover-scale" title="Click to view & manage" onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.12)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = rowStyle.boxShadow}>
+                                        <td style={{...tdStyle, textAlign: 'center', fontSize: '20px', fontWeight: 'bold'}}>
+                                            {isBanned && <span title="Banned User" style={{filter: 'drop-shadow(0 2px 4px rgba(220,38,38,0.3))'}}>🚫</span>}
+                                            {!isBanned && isWatchlisted && <span title="Global Watchlist" style={{filter: 'drop-shadow(0 2px 4px rgba(234,179,8,0.3))'}}>⚠️</span>}
+                                            {isAIFlag && <span title="AI Suspicion" style={{filter: 'drop-shadow(0 2px 4px rgba(249,115,22,0.3))'}}>🤖</span>}
+                                            {!isBanned && !isWatchlisted && !isAIFlag && <div style={{width:'10px', height:'10px', background: 'linear-gradient(135deg, #10b981, #059669)', borderRadius:'50%', margin:'0 auto', boxShadow: '0 0 8px rgba(16,185,129,0.4)'}}></div>}
                                         </td>
                                         <td style={tdStyle}>
                                             <div style={{display:'flex', alignItems:'center'}}>
-                                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#4b5563', marginRight: '12px' }}>
-                                                    {log.visitor?.FullName ? log.visitor.FullName[0] : '?'}
+                                                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(135deg, #2563eb, #1e40af)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '800', color: 'white', marginRight: '12px', boxShadow: '0 4px 12px rgba(37,99,235,0.2)' }}>
+                                                    {log.visitor?.FullName ? log.visitor.FullName[0].toUpperCase() : '?'}
                                                 </div>
                                                 <div>
-                                                    <div style={{fontWeight: 'bold', color: '#111827'}}>{log.visitor?.FullName}</div>
-                                                    <div style={{fontSize: '11px', color: '#6b7280'}}>{log.visitor?.VisitorType || 'Visitor'}</div>
+                                                    <div style={{fontWeight: '700', color: '#0f172a', fontSize: '13px'}}>{log.visitor?.FullName}</div>
+                                                    <div style={{fontSize: '11px', color: '#64748b', fontWeight: '500', marginTop: '2px'}}>{log.visitor?.VisitorType || 'Visitor'}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td style={tdStyle}><span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: '#e5e7eb', color: '#374151' }}>{log.DepartmentToVisit}</span></td>
+                                        <td style={tdStyle}><span style={{ fontSize: '11px', fontWeight: '700', padding: '6px 12px', borderRadius: '10px', backgroundColor: '#dbeafe', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{log.DepartmentToVisit}</span></td>
                                         <td style={tdStyle}>
-                                            <div style={{display:'flex', flexDirection:'column'}}>
+                                            <div style={{display:'flex', flexDirection:'column', gap: '4px'}}>
                                                 {formatDuration(log.EntryTimestamp)}
-                                                <span style={{fontSize:'11px', color:'#9ca3af', marginTop:'2px'}}>In: {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                                                <span style={{fontSize:'10px', color:'#64748b', fontWeight: '600'}}>↓ {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                             </div>
                                         </td>
                                         <td style={tdStyle}>
-                                            <div style={{display:'flex', flexDirection:'column'}}>
-                                                <span style={{color: '#374151'}}>{log.PurposeOfVisit}</span>
-                                                {isOverstay && <span style={{fontSize:'10px', color:'#dc2626', fontWeight:'bold', marginTop:'2px'}}>🕒 OVERSTAY ALERT</span>}
+                                            <div style={{display:'flex', flexDirection:'column', gap: '4px'}}>
+                                                <span style={{color: '#0f172a', fontWeight: '600'}}>{log.PurposeOfVisit}</span>
+                                                {isOverstay && <span style={{fontSize:'11px', color:'#dc2626', fontWeight:'700', padding: '3px 8px', backgroundColor: '#fee2e2', borderRadius: '6px', display: 'inline-block', width: 'fit-content'}}>⏱️ OVERSTAY</span>}
                                             </div>
                                         </td>
                                     </tr>
@@ -201,91 +268,97 @@ export default function LiveDashboard() {
             </div>
 
             <div style={sidePanel}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom: '1px solid #374151', paddingBottom: '10px', marginBottom: '20px'}}>
-                    <h3 style={{ margin: 0 }}>⚡ Today's Feed</h3>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom: '1px solid rgba(71,85,105,0.3)', paddingBottom: '14px', marginBottom: '20px'}}>
+                    <h3 style={{ margin: '0', fontSize: '16px', fontWeight: '800', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>📋 Today's Feed</h3>
+                    <span style={{fontSize: '10px', color: '#94a3b8', fontWeight: '600'}}>LIVE</span>
                 </div>
-                <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                    {activityFeed.map((alert) => {
-                        let msgColor = 'white'; let borderColor = '#374151'; let bg = 'rgba(255,255,255,0.05)';
-                        if (alert.type === 'danger') { msgColor = '#fca5a5'; borderColor = '#ef4444'; }
-                        else if (alert.type === 'warning') { msgColor = '#fde047'; borderColor = '#eab308'; }
-                        else if (alert.type === 'success') { msgColor = '#86efac'; borderColor = '#10b981'; }
-                        else if (alert.type === 'system') { msgColor = '#93c5fd'; borderColor = '#3b82f6'; }
+                <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                    {activityFeed.length === 0 ? (
+                        <div style={{padding: '24px 16px', textAlign: 'center', color: '#64748b', fontSize: '12px', fontWeight: '500'}}>No activity yet</div>
+                    ) : (
+                        activityFeed.map((alert) => {
+                            let msgColor = '#e2e8f0'; let borderColor = '#475569'; let bg = 'rgba(148,163,184,0.05)'; let icon = '📝';
+                            if (alert.type === 'danger') { msgColor = '#fca5a5'; borderColor = '#dc2626'; bg = 'rgba(220,38,38,0.1)'; icon = '🚨'; }
+                            else if (alert.type === 'warning') { msgColor = '#fbbf24'; borderColor = '#f97316'; bg = 'rgba(249,115,22,0.1)'; icon = '⚠️'; }
+                            else if (alert.type === 'success') { msgColor = '#86efac'; borderColor = '#10b981'; bg = 'rgba(16,185,129,0.1)'; icon = '✅'; }
+                            else if (alert.type === 'system') { msgColor = '#93c5fd'; borderColor = '#3b82f6'; bg = 'rgba(59,130,246,0.1)'; icon = '⚙️'; }
 
-                        return (
-                            <div key={alert.id} className="fade-in" style={{ padding: '10px', borderLeft: `3px solid ${borderColor}`, backgroundColor: bg, borderRadius: '0 4px 4px 0' }}>
-                                <div style={{ fontSize: '10px', color: '#9ca3af', marginBottom:'2px' }}>{alert.time}</div>
-                                <div style={{ fontSize: '12px', color: msgColor, fontWeight: '500' }}>{alert.msg}</div>
-                            </div>
-                        );
-                    })}
+                            return (
+                                <div key={alert.id} className="fade-in" style={{ padding: '12px 14px', borderLeft: `3px solid ${borderColor}`, backgroundColor: bg, borderRadius: '10px', transition: 'all 0.3s ease', cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(4px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}>
+                                    <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom:'4px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{icon} {alert.time}</div>
+                                    <div style={{ fontSize: '12px', color: msgColor, fontWeight: '600', lineHeight: '1.4' }}>{alert.msg}</div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
 
             {selectedVisitor && (
                 <div style={modalOverlayStyle}>
                     <div style={modalBoxStyle}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:'1px solid #e5e7eb', paddingBottom:'10px'}}>
-                            <h2 style={{margin:0, fontSize:'18px'}}>👮‍♂️ Security Control</h2>
-                            <button onClick={() => setSelectedVisitor(null)} style={{background:'none', border:'none', fontSize:'18px', cursor:'pointer'}}>✕</button>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'24px', borderBottom:'2px solid #e2e8f0', paddingBottom:'16px'}}>
+                            <h2 style={{margin:'0', fontSize:'20px', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.3px'}}>🔐 Security Control Panel</h2>
+                            <button onClick={() => setSelectedVisitor(null)} style={{background:'none', border:'none', fontSize:'24px', cursor:'pointer', color: '#64748b', transition: 'color 0.2s'}} onMouseEnter={(e) => e.target.style.color = '#dc2626'} onMouseLeave={(e) => e.target.style.color = '#64748b'}>✕</button>
                         </div>
                         
-                        <div style={{display:'flex', gap:'15px', marginBottom:'20px'}}>
-                            <div style={{width:'60px', height:'60px', borderRadius:'8px', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px', fontWeight:'bold', color:'#9ca3af'}}>{selectedVisitor.visitor?.FullName[0]}</div>
+                        <div style={{display:'flex', gap:'16px', marginBottom:'24px', padding: '16px', backgroundColor: '#f1f5f9', borderRadius: '12px', border: '1px solid #cbd5e1'}}>
+                            <div style={{width:'64px', height:'64px', borderRadius:'12px', background: 'linear-gradient(135deg, #2563eb, #1e40af)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'24px', fontWeight:'800', color:'white', boxShadow: '0 4px 12px rgba(37,99,235,0.2)', flexShrink: 0}}>{selectedVisitor.visitor?.FullName ? selectedVisitor.visitor?.FullName[0].toUpperCase() : '?'}</div>
                             <div>
-                                <h3 style={{margin:0}}>{selectedVisitor.visitor?.FullName}</h3>
-                                <p style={{margin:'4px 0 0 0', fontSize:'13px', color:'#6b7280'}}>ID: #{selectedVisitor.visitor?.VisitorID} • {selectedVisitor.visitor?.VisitorType || selectedVisitor.visitor?.AffiliationType}</p>
+                                <h3 style={{margin:'0 0 4px 0', fontSize: '16px', fontWeight: '800', color: '#0f172a'}}>{selectedVisitor.visitor?.FullName}</h3>
+                                <p style={{margin:'0', fontSize:'12px', color:'#64748b', fontWeight: '600'}}>ID: #{selectedVisitor.visitor?.VisitorID} • {selectedVisitor.visitor?.VisitorType || selectedVisitor.visitor?.AffiliationType}</p>
+                                <p style={{margin:'6px 0 0 0', fontSize:'11px', color: '#94a3b8', fontWeight: '500'}}>{new Date().toLocaleString([], {dateStyle: 'short', timeStyle: 'short'})}</p>
                             </div>
                         </div>
 
                         {/* 📇 FULL DETAILS GRID */}
-                        <div style={{background:'#f9fafb', padding:'15px', borderRadius:'8px', marginBottom:'20px', fontSize:'13px'}}>
-                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
-                                <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px'}}>
-                                    <strong style={{color: '#4f46e5'}}>Current Visit Info</strong>
+                        <div style={{background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', padding:'18px', borderRadius:'12px', marginBottom:'24px', fontSize:'12px', border: '1px solid #cbd5e1'}}>
+                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px'}}>
+                                <div style={{gridColumn: 'span 2', borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', marginBottom: '4px'}}>
+                                    <strong style={{color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.3px', fontSize: '11px', fontWeight: '800'}}>📍 Current Visit Info</strong>
                                 </div>
-                                <div><strong>Dept:</strong> {selectedVisitor.DepartmentToVisit}</div>
-                                <div><strong>Host:</strong> {selectedVisitor.PersonToVisit || 'N/A'}</div>
-                                <div style={{gridColumn: 'span 2'}}><strong>Purpose:</strong> {selectedVisitor.PurposeOfVisit}</div>
+                                <div><strong style={{color: '#475569'}}>Department:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.DepartmentToVisit}</span></div>
+                                <div><strong style={{color: '#475569'}}>Host:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.PersonToVisit || 'N/A'}</span></div>
+                                <div style={{gridColumn: 'span 2'}}><strong style={{color: '#475569'}}>Purpose:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.PurposeOfVisit}</span></div>
                                 
-                                <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px', marginTop: '4px'}}>
-                                    <strong style={{color: '#4f46e5'}}>Personal Data</strong>
+                                <div style={{gridColumn: 'span 2', borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', marginBottom: '4px', marginTop: '8px'}}>
+                                    <strong style={{color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.3px', fontSize: '11px', fontWeight: '800'}}>👤 Personal Data</strong>
                                 </div>
-                                <div><strong>Age:</strong> {selectedVisitor.visitor?.Age || 'N/A'}</div>
-                                <div><strong>Sex:</strong> {selectedVisitor.visitor?.Sex || 'N/A'}</div>
-                                <div><strong>Phone:</strong> {selectedVisitor.visitor?.ContactNumber || 'N/A'}</div>
-                                <div><strong>Email:</strong> {selectedVisitor.visitor?.Email || 'N/A'}</div>
+                                <div><strong style={{color: '#475569'}}>Age:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.visitor?.Age || 'N/A'}</span></div>
+                                <div><strong style={{color: '#475569'}}>Sex:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.visitor?.Sex || 'N/A'}</span></div>
+                                <div><strong style={{color: '#475569'}}>Phone:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.visitor?.ContactNumber || 'N/A'}</span></div>
+                                <div><strong style={{color: '#475569'}}>Email:</strong> <span style={{color: '#0f172a', fontWeight: '600'}}>{selectedVisitor.visitor?.Email || 'N/A'}</span></div>
                             </div>
                         </div>
 
                         {/* 🌍 RESPONSIVE GLOBAL CLEARANCE */}
-                        <div>
-                            <div style={{display:'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-                                <h4 style={{ margin: 0, fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Global Status</h4>
-                                <button onClick={handleForceCheckout} style={{ padding:'4px 10px', background:'white', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:'4px', cursor:'pointer', fontWeight:'bold', fontSize:'11px' }}>🚪 Force Exit</button>
+                        <div style={{marginTop: '28px', paddingTop: '20px', borderTop: '2px solid #e2e8f0'}}>
+                            <div style={{display:'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+                                <h4 style={{ margin: '0', fontSize: '12px', color: '#475569', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.5px' }}>🔄 Global Status Control</h4>
+                                <button onClick={handleForceCheckout} style={{ padding:'8px 14px', background: '#fef2f2', color:'#dc2626', border:'1.5px solid #fecaca', borderRadius:'10px', cursor:'pointer', fontWeight:'700', fontSize:'11px', transition: 'all 0.3s ease', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 2px 6px rgba(220,38,38,0.1)' }} onMouseEnter={(e) => {e.target.style.backgroundColor = '#dc2626'; e.target.style.color = 'white'}} onMouseLeave={(e) => {e.target.style.backgroundColor = '#fef2f2'; e.target.style.color = '#dc2626'}}>🚪 Force Exit</button>
                             </div>
                             
                             {(inputMode === 'watchlist' || inputMode === 'ban') ? (
-                                <div className="fade-in">
-                                    <input type="text" autoFocus value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder={`Reason for ${inputMode}...`} style={{...inputStyle, border: `1px solid ${inputMode === 'ban' ? '#ef4444' : '#d97706'}`}} />
-                                    <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                                        <button onClick={() => setInputMode(null)} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer'}}>Cancel</button>
-                                        <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer', background: inputMode === 'ban' ? '#ef4444' : '#d97706', color:'white', fontWeight:'bold'}}>Confirm</button>
+                                <div className="fade-in" style={{animation: 'fadeIn 0.2s ease'}}>
+                                    <input type="text" autoFocus value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder={`Enter reason for ${inputMode === 'ban' ? 'ban' : 'flag'}...`} style={{...inputStyle, border: `1.5px solid ${inputMode === 'ban' ? '#dc2626' : '#f97316'}`, backgroundColor: inputMode === 'ban' ? '#fef2f2' : '#fef3c7'}} />
+                                    <div style={{display:'flex', gap:'12px', marginTop:'14px'}}>
+                                        <button onClick={() => setInputMode(null)} style={{flex:1, padding:'11px', borderRadius:'10px', border:'1.5px solid #cbd5e1', cursor:'pointer', fontWeight:'700', fontSize:'12px', backgroundColor: 'white', color: '#475569', transition: 'all 0.2s', textTransform: 'uppercase', letterSpacing: '0.3px'}} onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f5f9'} onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}>Cancel</button>
+                                        <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{flex:1, padding:'11px', borderRadius:'10px', border:'none', cursor:'pointer', background: inputMode === 'ban' ? 'linear-gradient(135deg, #dc2626, #b91c1c)' : 'linear-gradient(135deg, #f97316, #ea580c)', color:'white', fontWeight:'800', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: `0 4px 12px ${inputMode === 'ban' ? 'rgba(220,38,38,0.3)' : 'rgba(249,115,22,0.3)'}`, transition: 'all 0.2s'}} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}>Confirm {inputMode === 'ban' ? '🚫' : '⚠️'}</button>
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
                                     {selectedVisitor.visitor?.Status === 'Banned' ? (
-                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ gridColumn: 'span 2', padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Unban User (Clear Record)</button>
+                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ gridColumn: 'span 2', padding:'14px', background: 'linear-gradient(135deg, #059669, #047857)', color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'800', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 4px 12px rgba(16,185,129,0.3)', transition: 'all 0.3s' }} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}}>✅ UNBAN USER & CLEAR RECORD</button>
                                     ) : selectedVisitor.visitor?.IsWatchlisted == 1 ? (
                                         <>
-                                            <button onClick={() => handleGlobalClearance('Cleared')} style={{ padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Remove Flag</button>
-                                            <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#ef4444', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                            <button onClick={() => handleGlobalClearance('Cleared')} style={{ padding:'14px', background: 'linear-gradient(135deg, #059669, #047857)', color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'800', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 4px 12px rgba(16,185,129,0.3)', transition: 'all 0.3s' }} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}}>✅ Remove Flag</button>
+                                            <button onClick={() => setInputMode('ban')} style={{ padding:'14px', background: 'linear-gradient(135deg, #dc2626, #b91c1c)', color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'800', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 4px 12px rgba(220,38,38,0.3)', transition: 'all 0.3s' }} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}}>🚫 Ban User</button>
                                         </>
                                     ) : (
                                         <>
-                                            <button onClick={() => setInputMode('watchlist')} style={{ padding:'10px', background:'#fefce8', color:'#a16207', border:'1px solid #fef08a', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>⚠️ Global Flag</button>
-                                            <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#fef2f2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                            <button onClick={() => setInputMode('watchlist')} style={{ padding:'14px', background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', color:'#78350f', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'800', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 4px 12px rgba(251,191,36,0.3)', transition: 'all 0.3s' }} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}}>⚠️ Flag Globally</button>
+                                            <button onClick={() => setInputMode('ban')} style={{ padding:'14px', background: 'linear-gradient(135deg, #dc2626, #b91c1c)', color:'white', border:'none', borderRadius:'10px', cursor:'pointer', fontWeight:'800', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.3px', boxShadow: '0 4px 12px rgba(220,38,38,0.3)', transition: 'all 0.3s' }} onMouseEnter={(e) => e.target.transform = 'translateY(-2px)'} onMouseLeave={(e) => e.target.transform = 'translateY(0)'}}>🚫 Ban User</button>
                                         </>
                                     )}
                                 </div>
