@@ -15,33 +15,59 @@ export default function AdminDashboard() {
     };
 
     return (
-        <div style={dashboardWrapperStyle}>
+        <div className="flex h-screen bg-slate-50 font-sans">
             
             {/* SIDEBAR */}
-            <div style={sidebarStyle}>
-                <div style={sidebarHeaderStyle}>
-                    <div style={{fontSize: '24px'}}>🛡️</div>
-                    <div>ViSecure Admin</div>
+            <div className="w-64 bg-blue-700 text-white flex flex-col shadow-sm">
+                <div className="mb-10 flex items-center gap-3 text-xl font-bold text-white pb-6 border-b border-blue-600 px-5 pt-6">
+                    <div className="text-2xl">🛡️</div>
+                    <div>Admin Dashboard</div>
                 </div>
 
-                <nav style={navStyle}>
+                <nav className="flex flex-col gap-1 flex-1 px-3">
                     {/* 🆕 Using NavLink instead of buttons */}
-                    <NavLink to="/admin/monitoring" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
-                        Live Dashboard
+                    <NavLink 
+                        to="/admin/monitoring" 
+                        className={({ isActive }) => 
+                            isActive 
+                                ? "px-4 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold transition-colors" 
+                                : "px-4 py-3 bg-transparent text-blue-100 hover:text-white hover:bg-blue-600/50 rounded-md text-sm font-medium transition-colors"
+                        }
+                    >
+                        Live Monitoring
                     </NavLink>
-                    <NavLink to="/admin/records" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
+                    <NavLink 
+                        to="/admin/records" 
+                        className={({ isActive }) => 
+                            isActive 
+                                ? "px-4 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold transition-colors" 
+                                : "px-4 py-3 bg-transparent text-blue-100 hover:text-white hover:bg-blue-600/50 rounded-md text-sm font-medium transition-colors"
+                        }
+                    >
                         Visitor Records
                     </NavLink>
-                    <NavLink to="/admin/analytics" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
+                    <NavLink 
+                        to="/admin/analytics" 
+                        className={({ isActive }) => 
+                            isActive 
+                                ? "px-4 py-3 bg-blue-600 text-white rounded-md text-sm font-semibold transition-colors" 
+                                : "px-4 py-3 bg-transparent text-blue-100 hover:text-white hover:bg-blue-600/50 rounded-md text-sm font-medium transition-colors"
+                        }
+                    >
                         Analytics & Reports
                     </NavLink>
                 </nav>
 
-                <button onClick={handleLogout} style={logoutBtnStyle}>Sign Out</button>
+                <button 
+                    onClick={handleLogout} 
+                    className="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white border-none rounded-md cursor-pointer font-semibold mt-auto mb-4 mx-3 transition-colors"
+                >
+                    Sign Out
+                </button>
             </div>
 
             {/* MAIN CONTENT AREA */}
-            <div style={mainContentStyle}>
+            <div className="flex-1 p-8 overflow-y-auto">
                 {/* 🛡️ THE OUTLET: This is where Monitoring/Records/Analytics will appear! */}
                 <Outlet />
             </div>
@@ -49,13 +75,3 @@ export default function AdminDashboard() {
         </div>
     );
 }
-
-// --- DASHBOARD LAYOUT STYLES ---
-const dashboardWrapperStyle = { display: 'flex', height: '100vh', backgroundColor: '#f0f2f5', fontFamily: "'Inter', sans-serif" };
-const sidebarStyle = { width: '260px', backgroundColor: '#1a1c23', color: '#fff', display: 'flex', flexDirection: 'column', padding: '20px' };
-const sidebarHeaderStyle = { marginBottom: '40px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '20px', fontWeight: 'bold', color: '#fff', paddingBottom: '20px', borderBottom: '1px solid #2f333d' };
-const navStyle = { display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 };
-const tabStyle = { padding: '12px 15px', backgroundColor: 'transparent', color: '#9ca3af', border: 'none', borderRadius: '6px', textAlign: 'left', cursor: 'pointer', fontSize: '14px', fontWeight: '500' };
-const activeTabStyle = { ...tabStyle, backgroundColor: '#007bff', color: 'white', fontWeight: '600' };
-const logoutBtnStyle = { padding: '12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', marginTop: 'auto', fontWeight: 'bold' };
-const mainContentStyle = { flex: 1, padding: '30px', overflowY: 'auto' };

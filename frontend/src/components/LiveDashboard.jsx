@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { Eye, Filter, AlertTriangle, Clock, Activity, DoorOpen, CheckCircle2, Ban, Flag, Bot, ShieldAlert } from 'lucide-react';
 
 export default function LiveDashboard() {
     const [visitors, setVisitors] = useState([]);
@@ -10,7 +11,7 @@ export default function LiveDashboard() {
     const [filterType, setFilterType] = useState("all"); 
     const [currentTime, setCurrentTime] = useState(new Date());
     
-    // 🔥 Activity feed is now completely stateless and driven by the database!
+    // Activity feed is now completely stateless and driven by the database!
     const [activityFeed, setActivityFeed] = useState([]);
     
     const [selectedVisitor, setSelectedVisitor] = useState(null);
@@ -23,7 +24,7 @@ export default function LiveDashboard() {
         if (!selectedVisitor) { setInputMode(null); setActionReason(""); }
     }, [selectedVisitor]);
 
-    // --- 🛠️ UPDATED FETCH LOGIC (Stateless Database Sync) ---
+    // --- UPDATED FETCH LOGIC (Stateless Database Sync) ---
     const fetchData = async () => {
         try {
             const response = await axios.get(`${API_BASE}/api/live-monitor`);
@@ -96,196 +97,310 @@ export default function LiveDashboard() {
         return { backgroundColor: 'white', borderLeft: '6px solid transparent', cursor: 'pointer', transition: 'all 0.2s' };
     };
 
+    // Remove emoji/pictographic characters from dynamic text (e.g. feed messages)
+    const stripEmojis = (text) => {
+        if (!text) return '';
+        return text.replace(/[\p{Extended_Pictographic}\u2600-\u26FF\u2700-\u27BF]/gu, '');
+    };
+
     const ChipButton = ({ label, count, active, type, onClick }) => {
-        let baseColor = '#e5e7eb'; let activeColor = '#1f2937'; let textColor = '#374151'; let activeText = 'white';
-        if (type === 'risk') { baseColor = '#fee2e2'; activeColor = '#dc2626'; textColor = '#b91c1c'; }
-        if (type === 'overstay') { baseColor = '#ffedd5'; activeColor = '#ea580c'; textColor = '#9a3412'; }
+        let baseClasses = 'px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all mr-2 border ';
+        let activeClasses = '';
+        let inactiveClasses = '';
+        
+        if (type === 'risk') {
+            inactiveClasses = 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100';
+            activeClasses = 'bg-red-600 text-white border-red-600';
+        } else if (type === 'overstay') {
+            inactiveClasses = 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100';
+            activeClasses = 'bg-orange-600 text-white border-orange-600';
+        } else {
+            inactiveClasses = 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
+            activeClasses = 'bg-slate-900 text-white border-slate-900';
+        }
+        
         return (
-            <button onClick={onClick} style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px', backgroundColor: active ? activeColor : baseColor, color: active ? activeText : textColor }}>
-                {label} {count > 0 && <span style={{ opacity: 0.8, fontSize: '0.9em', marginLeft: '4px' }}>({count})</span>}
+            <button 
+                onClick={onClick} 
+                className={`${baseClasses} ${active ? activeClasses : inactiveClasses}`}
+            >
+                <span className="inline-flex items-center gap-1">
+                    {!type && <Filter className="w-3 h-3" />}
+                    {type === 'risk' && <AlertTriangle className="w-3 h-3" />}
+                    {type === 'overstay' && <Clock className="w-3 h-3" />}
+                    <span>{label}</span>
+                    {count > 0 && <span className="opacity-80 text-[0.9em] ml-1">({count})</span>}
+                </span>
             </button>
         );
     };
 
     // --- STYLES ---
-    const pageGrid = { display: 'grid', gridTemplateColumns: '3.5fr 1fr', gap: '20px', height: '85vh' };
-    const mainPanel = { backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflowY: 'auto' };
-    const sidePanel = { backgroundColor: '#1f2937', borderRadius: '12px', padding: '20px', color: 'white', display: 'flex', flexDirection: 'column', overflowY: 'auto' };
     const tableStyle = { width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px', fontSize: '14px' };
     const thStyle = { textAlign: 'left', padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontSize: '12px', textTransform:'uppercase' };
     const tdStyle = { padding: '12px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'middle' };
     const inputStyle = { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' };
-    const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' };
-    const modalBoxStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '16px', width: '450px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' };
 
     return (
-        <div className="fade-in" style={pageGrid}>
-            <div style={mainPanel}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <div>
-                        <h2 style={{ margin: 0 }}>👁️ Live Monitor</h2>
-                        <span style={{ color: '#6b7280', fontSize: '14px' }}>Real-time AI surveillance</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                        <input type="text" placeholder="🔍 Search active visitors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', width: '220px', outline: 'none' }} />
-                        <div style={{ fontSize: '32px', fontWeight: 'bold', color: occupancy > capacity ? '#ef4444' : '#10b981' }}>{occupancy} <span style={{fontSize: '16px', color: '#9ca3af'}}>/ {capacity}</span></div>
-                    </div>
-                </div>
-
-                <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginRight: '10px', textTransform: 'uppercase' }}>Filters:</span>
-                    <ChipButton label="All Active" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
-                    <ChipButton label="⚠️ High Risk" count={riskCount} active={filterType === 'risk'} type="risk" onClick={() => setFilterType('risk')} />
-                    <ChipButton label="🕒 Overstaying" count={overstayCount} active={filterType === 'overstay'} type="overstay" onClick={() => setFilterType('overstay')} />
-                </div>
-
-                <table style={tableStyle}>
-                    <thead>
-                        <tr>
-                            <th style={{...thStyle, width: '60px', textAlign: 'center'}}>Risk</th>
-                            <th style={thStyle}>Visitor Details</th>
-                            <th style={thStyle}>Department</th>
-                            <th style={thStyle}>Timeline</th>
-                            <th style={thStyle}>Purpose / Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredVisitors.length === 0 ? (
-                            <tr><td colSpan="5" style={{padding: '40px', textAlign: 'center', color: '#9ca3af'}}>{searchTerm || filterType !== 'all' ? "No matching visitors found." : "Building is empty."}</td></tr>
-                        ) : (
-                            filteredVisitors.map(log => {
-                                const rowStyle = getRowStyle(log);
-                                const isBanned = log.visitor?.Status === 'Banned';
-                                const isWatchlisted = log.visitor?.IsWatchlisted == 1 && !isBanned;
-                                const isAIFlag = log.IsFlagged == 1;
-                                const isOverstay = getDurationHours(log.EntryTimestamp) > 4;
-
-                                return (
-                                    <tr key={log.LogID} style={rowStyle} onClick={() => setSelectedVisitor(log)} className="hover-scale" title="Click to manage">
-                                        <td style={{...tdStyle, textAlign: 'center', fontSize: '18px'}}>
-                                            {isBanned && <span title="Banned User">🚫</span>}
-                                            {!isBanned && isWatchlisted && <span title="Global Watchlist">⚠️</span>}
-                                            {isAIFlag && <span title="AI Suspicion">🤖</span>}
-                                            {!isBanned && !isWatchlisted && !isAIFlag && <div style={{width:'8px', height:'8px', background:'#10b981', borderRadius:'50%', margin:'0 auto', opacity:0.3}}></div>}
-                                        </td>
-                                        <td style={tdStyle}>
-                                            <div style={{display:'flex', alignItems:'center'}}>
-                                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#4b5563', marginRight: '12px' }}>
-                                                    {log.visitor?.FullName ? log.visitor.FullName[0] : '?'}
-                                                </div>
-                                                <div>
-                                                    <div style={{fontWeight: 'bold', color: '#111827'}}>{log.visitor?.FullName}</div>
-                                                    <div style={{fontSize: '11px', color: '#6b7280'}}>{log.visitor?.VisitorType || 'Visitor'}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td style={tdStyle}><span style={{ fontSize: '11px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: '#e5e7eb', color: '#374151' }}>{log.DepartmentToVisit}</span></td>
-                                        <td style={tdStyle}>
-                                            <div style={{display:'flex', flexDirection:'column'}}>
-                                                {formatDuration(log.EntryTimestamp)}
-                                                <span style={{fontSize:'11px', color:'#9ca3af', marginTop:'2px'}}>In: {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                                            </div>
-                                        </td>
-                                        <td style={tdStyle}>
-                                            <div style={{display:'flex', flexDirection:'column'}}>
-                                                <span style={{color: '#374151'}}>{log.PurposeOfVisit}</span>
-                                                {isOverstay && <span style={{fontSize:'10px', color:'#dc2626', fontWeight:'bold', marginTop:'2px'}}>🕒 OVERSTAY ALERT</span>}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            <div style={sidePanel}>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom: '1px solid #374151', paddingBottom: '10px', marginBottom: '20px'}}>
-                    <h3 style={{ margin: 0 }}>⚡ Today's Feed</h3>
-                </div>
-                <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                    {activityFeed.map((alert) => {
-                        let msgColor = 'white'; let borderColor = '#374151'; let bg = 'rgba(255,255,255,0.05)';
-                        if (alert.type === 'danger') { msgColor = '#fca5a5'; borderColor = '#ef4444'; }
-                        else if (alert.type === 'warning') { msgColor = '#fde047'; borderColor = '#eab308'; }
-                        else if (alert.type === 'success') { msgColor = '#86efac'; borderColor = '#10b981'; }
-                        else if (alert.type === 'system') { msgColor = '#93c5fd'; borderColor = '#3b82f6'; }
-
-                        return (
-                            <div key={alert.id} className="fade-in" style={{ padding: '10px', borderLeft: `3px solid ${borderColor}`, backgroundColor: bg, borderRadius: '0 4px 4px 0' }}>
-                                <div style={{ fontSize: '10px', color: '#9ca3af', marginBottom:'2px' }}>{alert.time}</div>
-                                <div style={{ fontSize: '12px', color: msgColor, fontWeight: '500' }}>{alert.msg}</div>
+        <div className="fade-in bg-slate-50 min-h-screen p-6">
+            <div className="grid grid-cols-[3.5fr_1fr] gap-5 h-[85vh]">
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm overflow-y-auto">
+                    <div className="bg-blue-50 rounded-lg p-4 mb-6 -mx-6 -mt-6 border-b border-slate-200">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h2 className="text-xl font-semibold text-slate-900 mb-1">
+                                    <span className="inline-flex items-center gap-2">
+                                        <Eye className="w-5 h-5 text-blue-600" />
+                                        <span>Live Monitor</span>
+                                    </span>
+                                </h2>
+                                <span className="text-sm text-slate-500">Real-time AI surveillance</span>
                             </div>
-                        );
-                    })}
+                            <div className="flex gap-5 items-center">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search active visitors..." 
+                                    value={searchTerm} 
+                                    onChange={(e) => setSearchTerm(e.target.value)} 
+                                    className="px-3 py-2 rounded-lg border border-slate-300 text-sm w-56 outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent" 
+                                />
+                                <div className={`text-3xl font-bold ${occupancy > capacity ? 'text-red-600' : 'text-green-600'}`}>
+                                    {occupancy} <span className="text-base font-normal text-slate-500">/ {capacity}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mb-4 flex items-center">
+                        <span className="text-xs font-semibold text-slate-500 mr-3 uppercase tracking-wide">Filters:</span>
+                        <ChipButton label="All Active" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
+                        <ChipButton label="High Risk" count={riskCount} active={filterType === 'risk'} type="risk" onClick={() => setFilterType('risk')} />
+                        <ChipButton label="Overstaying" count={overstayCount} active={filterType === 'overstay'} type="overstay" onClick={() => setFilterType('overstay')} />
+                    </div>
+
+                    <table style={tableStyle}>
+                        <thead>
+                            <tr className="bg-slate-50">
+                                <th style={{...thStyle, width: '60px', textAlign: 'center'}} className="text-slate-600">Risk</th>
+                                <th style={thStyle} className="text-slate-600">Visitor Details</th>
+                                <th style={thStyle} className="text-slate-600">Department</th>
+                                <th style={thStyle} className="text-slate-600">Timeline</th>
+                                <th style={thStyle} className="text-slate-600">Purpose / Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredVisitors.length === 0 ? (
+                                <tr><td colSpan="5" className="py-10 text-center text-slate-500">{searchTerm || filterType !== 'all' ? "No matching visitors found." : "Building is empty."}</td></tr>
+                            ) : (
+                                filteredVisitors.map(log => {
+                                    const rowStyle = getRowStyle(log);
+                                    const isBanned = log.visitor?.Status === 'Banned';
+                                    const isWatchlisted = log.visitor?.IsWatchlisted == 1 && !isBanned;
+                                    const isAIFlag = log.IsFlagged == 1;
+                                    const isOverstay = getDurationHours(log.EntryTimestamp) > 4;
+
+                                    return (
+                                        <tr key={log.LogID} style={rowStyle} onClick={() => setSelectedVisitor(log)} className="hover-scale cursor-pointer transition-all" title="Click to manage">
+                                            <td style={{...tdStyle, textAlign: 'center', fontSize: '18px'}}>
+                                                {isBanned && <Ban title="Banned User" className="w-4 h-4 text-red-600 inline-block" />}
+                                                {!isBanned && isWatchlisted && <Flag title="Global Watchlist" className="w-4 h-4 text-amber-600 inline-block" />}
+                                                {isAIFlag && <Bot title="AI Suspicion" className="w-4 h-4 text-blue-600 inline-block" />}
+                                                {!isBanned && !isWatchlisted && !isAIFlag && <div className="w-2 h-2 bg-green-600 rounded-full mx-auto opacity-30"></div>}
+                                            </td>
+                                            <td style={tdStyle}>
+                                                <div className="flex items-center">
+                                                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 mr-3">
+                                                        {log.visitor?.FullName ? log.visitor.FullName[0] : '?'}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-semibold text-slate-900">{log.visitor?.FullName}</div>
+                                                        <div className="text-xs text-slate-500">{log.visitor?.VisitorType || 'Visitor'}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={tdStyle}>
+                                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-slate-100 text-slate-700">{log.DepartmentToVisit}</span>
+                                            </td>
+                                            <td style={tdStyle}>
+                                                <div className="flex flex-col">
+                                                    {formatDuration(log.EntryTimestamp)}
+                                                    <span className="text-xs text-slate-500 mt-0.5">In: {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                                                </div>
+                                            </td>
+                                            <td style={tdStyle}>
+                                                <div className="flex flex-col">
+                                                    <span className="text-slate-700">{log.PurposeOfVisit}</span>
+                                                    {isOverstay && (
+                                                        <span className="text-xs text-red-600 font-bold mt-0.5 inline-flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" />
+                                                            <span>Overstay alert</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col overflow-y-auto">
+                    <div className="bg-slate-50 rounded-lg p-4 mb-5 -mx-6 -mt-6 border-b border-slate-200">
+                        <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">
+                            <span className="inline-flex items-center gap-2">
+                                <Activity className="w-4 h-4 text-blue-600" />
+                                <span>Today's Feed</span>
+                            </span>
+                        </h3>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        {activityFeed.map((alert) => {
+                            let borderColor = 'border-slate-300';
+                            let bgColor = 'bg-slate-50';
+                            let textColor = 'text-slate-700';
+                            
+                            if (alert.type === 'danger') { 
+                                borderColor = 'border-red-500'; 
+                                bgColor = 'bg-red-50'; 
+                                textColor = 'text-red-700';
+                            }
+                            else if (alert.type === 'warning') { 
+                                borderColor = 'border-yellow-500'; 
+                                bgColor = 'bg-yellow-50'; 
+                                textColor = 'text-yellow-700';
+                            }
+                            else if (alert.type === 'success') { 
+                                borderColor = 'border-green-500'; 
+                                bgColor = 'bg-green-50'; 
+                                textColor = 'text-green-700';
+                            }
+                            else if (alert.type === 'system') { 
+                                borderColor = 'border-blue-600'; 
+                                bgColor = 'bg-blue-50'; 
+                                textColor = 'text-blue-700';
+                            }
+
+                            return (
+                                <div key={alert.id} className={`fade-in p-3 border-l-4 ${borderColor} ${bgColor} rounded-r-md`}>
+                                    <div className="text-xs text-slate-500 mb-1">{alert.time}</div>
+                                    <div className={`text-sm ${textColor} font-medium`}>{stripEmojis(alert.msg)}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
 
             {selectedVisitor && (
-                <div style={modalOverlayStyle}>
-                    <div style={modalBoxStyle}>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', borderBottom:'1px solid #e5e7eb', paddingBottom:'10px'}}>
-                            <h2 style={{margin:0, fontSize:'18px'}}>👮‍♂️ Security Control</h2>
-                            <button onClick={() => setSelectedVisitor(null)} style={{background:'none', border:'none', fontSize:'18px', cursor:'pointer'}}>✕</button>
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] backdrop-blur-sm">
+                    <div className="bg-white rounded-xl p-6 w-[450px] shadow-xl border border-slate-200">
+                        <div className="bg-slate-50 rounded-lg p-4 mb-5 -mx-6 -mt-6 border-b border-slate-200">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-lg font-semibold text-slate-900">
+                                    <span className="inline-flex items-center gap-2">
+                                        <ShieldAlert className="w-5 h-5 text-blue-600" />
+                                        <span>Security Control</span>
+                                    </span>
+                                </h2>
+                                <button onClick={() => setSelectedVisitor(null)} className="text-slate-400 hover:text-slate-600 text-xl cursor-pointer">&times;</button>
+                            </div>
                         </div>
                         
-                        <div style={{display:'flex', gap:'15px', marginBottom:'20px'}}>
-                            <div style={{width:'60px', height:'60px', borderRadius:'8px', background:'#f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'20px', fontWeight:'bold', color:'#9ca3af'}}>{selectedVisitor.visitor?.FullName[0]}</div>
+                        <div className="flex gap-4 mb-5">
+                            <div className="w-15 h-15 rounded-lg bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-500">{selectedVisitor.visitor?.FullName[0]}</div>
                             <div>
-                                <h3 style={{margin:0}}>{selectedVisitor.visitor?.FullName}</h3>
-                                <p style={{margin:'4px 0 0 0', fontSize:'13px', color:'#6b7280'}}>ID: #{selectedVisitor.visitor?.VisitorID} • {selectedVisitor.visitor?.VisitorType || selectedVisitor.visitor?.AffiliationType}</p>
+                                <h3 className="text-slate-900 font-semibold mb-1">{selectedVisitor.visitor?.FullName}</h3>
+                                <p className="text-sm text-slate-500">ID: #{selectedVisitor.visitor?.VisitorID} • {selectedVisitor.visitor?.VisitorType || selectedVisitor.visitor?.AffiliationType}</p>
                             </div>
                         </div>
 
-                        {/* 📇 FULL DETAILS GRID */}
-                        <div style={{background:'#f9fafb', padding:'15px', borderRadius:'8px', marginBottom:'20px', fontSize:'13px'}}>
-                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
-                                <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px'}}>
-                                    <strong style={{color: '#4f46e5'}}>Current Visit Info</strong>
+                        {/* FULL DETAILS GRID */}
+                        <div className="bg-slate-50 rounded-lg p-4 mb-5 text-sm border border-slate-200">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2 border-b border-slate-200 pb-2 mb-2">
+                                    <strong className="text-blue-600">Current Visit Info</strong>
                                 </div>
-                                <div><strong>Dept:</strong> {selectedVisitor.DepartmentToVisit}</div>
-                                <div><strong>Host:</strong> {selectedVisitor.PersonToVisit || 'N/A'}</div>
-                                <div style={{gridColumn: 'span 2'}}><strong>Purpose:</strong> {selectedVisitor.PurposeOfVisit}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Dept:</strong> {selectedVisitor.DepartmentToVisit}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Host:</strong> {selectedVisitor.PersonToVisit || 'N/A'}</div>
+                                <div className="col-span-2 text-slate-700"><strong className="text-slate-900">Purpose:</strong> {selectedVisitor.PurposeOfVisit}</div>
                                 
-                                <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px', marginTop: '4px'}}>
-                                    <strong style={{color: '#4f46e5'}}>Personal Data</strong>
+                                <div className="col-span-2 border-b border-slate-200 pb-2 mb-2 mt-2">
+                                    <strong className="text-blue-600">Personal Data</strong>
                                 </div>
-                                <div><strong>Age:</strong> {selectedVisitor.visitor?.Age || 'N/A'}</div>
-                                <div><strong>Sex:</strong> {selectedVisitor.visitor?.Sex || 'N/A'}</div>
-                                <div><strong>Phone:</strong> {selectedVisitor.visitor?.ContactNumber || 'N/A'}</div>
-                                <div><strong>Email:</strong> {selectedVisitor.visitor?.Email || 'N/A'}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Age:</strong> {selectedVisitor.visitor?.Age || 'N/A'}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Sex:</strong> {selectedVisitor.visitor?.Sex || 'N/A'}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Phone:</strong> {selectedVisitor.visitor?.ContactNumber || 'N/A'}</div>
+                                <div className="text-slate-700"><strong className="text-slate-900">Email:</strong> {selectedVisitor.visitor?.Email || 'N/A'}</div>
                             </div>
                         </div>
 
-                        {/* 🌍 RESPONSIVE GLOBAL CLEARANCE */}
+                        {/* RESPONSIVE GLOBAL CLEARANCE */}
                         <div>
-                            <div style={{display:'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-                                <h4 style={{ margin: 0, fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Global Status</h4>
-                                <button onClick={handleForceCheckout} style={{ padding:'4px 10px', background:'white', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:'4px', cursor:'pointer', fontWeight:'bold', fontSize:'11px' }}>🚪 Force Exit</button>
+                            <div className="flex justify-between items-center mb-3">
+                                <h4 className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Global Status</h4>
+                                <button onClick={handleForceCheckout} className="px-3 py-1.5 bg-white text-red-600 border border-red-300 rounded-md cursor-pointer font-semibold text-xs hover:bg-red-50 transition-colors">
+                                    <span className="inline-flex items-center gap-2">
+                                        <DoorOpen className="w-4 h-4" />
+                                        <span>Force Exit</span>
+                                    </span>
+                                </button>
                             </div>
                             
                             {(inputMode === 'watchlist' || inputMode === 'ban') ? (
                                 <div className="fade-in">
-                                    <input type="text" autoFocus value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder={`Reason for ${inputMode}...`} style={{...inputStyle, border: `1px solid ${inputMode === 'ban' ? '#ef4444' : '#d97706'}`}} />
-                                    <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                                        <button onClick={() => setInputMode(null)} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer'}}>Cancel</button>
-                                        <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer', background: inputMode === 'ban' ? '#ef4444' : '#d97706', color:'white', fontWeight:'bold'}}>Confirm</button>
+                                    <input 
+                                        type="text" 
+                                        autoFocus 
+                                        value={actionReason} 
+                                        onChange={(e) => setActionReason(e.target.value)} 
+                                        placeholder={`Reason for ${inputMode}...`} 
+                                        className={`w-full px-3 py-2 rounded-lg text-sm mt-2 outline-none border ${inputMode === 'ban' ? 'border-red-400 focus:ring-2 focus:ring-red-500' : 'border-orange-400 focus:ring-2 focus:ring-orange-500'}`}
+                                    />
+                                    <div className="flex gap-3 mt-3">
+                                        <button onClick={() => setInputMode(null)} className="flex-1 px-4 py-2 rounded-lg border border-slate-300 cursor-pointer bg-white text-slate-700 hover:bg-slate-50 transition-colors font-medium">Cancel</button>
+                                        <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} className={`flex-1 px-4 py-2 rounded-lg border-none cursor-pointer text-white font-semibold transition-colors ${inputMode === 'ban' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>Confirm</button>
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                <div className="grid grid-cols-2 gap-3">
                                     {selectedVisitor.visitor?.Status === 'Banned' ? (
-                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ gridColumn: 'span 2', padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Unban User (Clear Record)</button>
+                                        <button onClick={() => handleGlobalClearance('Cleared')} className="col-span-2 px-4 py-2.5 bg-green-600 text-white border-none rounded-lg cursor-pointer font-semibold hover:bg-green-700 transition-colors">
+                                            <span className="inline-flex items-center gap-2">
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                <span>Unban User (Clear Record)</span>
+                                            </span>
+                                        </button>
                                     ) : selectedVisitor.visitor?.IsWatchlisted == 1 ? (
                                         <>
-                                            <button onClick={() => handleGlobalClearance('Cleared')} style={{ padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>✅ Remove Flag</button>
-                                            <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#ef4444', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                            <button onClick={() => handleGlobalClearance('Cleared')} className="px-4 py-2.5 bg-green-600 text-white border-none rounded-lg cursor-pointer font-semibold hover:bg-green-700 transition-colors">
+                                                <span className="inline-flex items-center gap-2">
+                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    <span>Remove Flag</span>
+                                                </span>
+                                            </button>
+                                            <button onClick={() => setInputMode('ban')} className="px-4 py-2.5 bg-red-600 text-white border-none rounded-lg cursor-pointer font-semibold hover:bg-red-700 transition-colors">
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Ban className="w-4 h-4" />
+                                                    <span>Ban User</span>
+                                                </span>
+                                            </button>
                                         </>
                                     ) : (
                                         <>
-                                            <button onClick={() => setInputMode('watchlist')} style={{ padding:'10px', background:'#fefce8', color:'#a16207', border:'1px solid #fef08a', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>⚠️ Global Flag</button>
-                                            <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#fef2f2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>🚫 Ban User</button>
+                                            <button onClick={() => setInputMode('watchlist')} className="px-4 py-2.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg cursor-pointer font-semibold hover:bg-yellow-100 transition-colors">
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Flag className="w-4 h-4" />
+                                                    <span>Global Flag</span>
+                                                </span>
+                                            </button>
+                                            <button onClick={() => setInputMode('ban')} className="px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg cursor-pointer font-semibold hover:bg-red-100 transition-colors">
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Ban className="w-4 h-4" />
+                                                    <span>Ban User</span>
+                                                </span>
+                                            </button>
                                         </>
                                     )}
                                 </div>

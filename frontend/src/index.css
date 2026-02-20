@@ -1,7 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add this to make the whole app background dark by default */
 body {
-  margin: 0;
-  padding: 0;
-  font-family: Arial, sans-serif;
-  background-color: #f0f2f5;
-  color: black;
+  @apply bg-slate-950 text-slate-300;
 }
