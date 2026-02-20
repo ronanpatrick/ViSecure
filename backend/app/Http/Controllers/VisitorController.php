@@ -171,13 +171,31 @@ class VisitorController extends Controller
             ->orderByDesc('count')
             ->get();
 
-        // 8. Weekly Heatmap 
-        $heatmap = [];
-        $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        foreach($days as $day) {
-            $heatmap[$day] = [];
-            for($h=7; $h<=18; $h++) { $heatmap[$day][$h] = rand(0, 15); } 
-        }
+        // 8. Weekly Heatmap (Powered by Actual Data)
+            $heatmap = [];
+            $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+            // Initialize the grid with zeros so empty hours show up correctly
+            foreach($days as $day) {
+                $heatmap[$day] = [];
+                for($h=7; $h<=18; $h++) { 
+                    $heatmap[$day][$h] = 0; 
+                }
+            }
+
+            // Get all visits to map the real hotspots
+            $allVisits = \App\Models\VisitLog::select('EntryTimestamp')->get();
+
+            foreach ($allVisits as $visit) {
+                $date = \Carbon\Carbon::parse($visit->EntryTimestamp);
+                $dayName = $date->format('D'); // Gets 'Mon', 'Tue', etc.
+                $hour = $date->hour;
+
+                // Only count hours within your facility's operating window (7 AM to 6 PM)
+                if (in_array($dayName, $days) && $hour >= 7 && $hour <= 18) {
+                    $heatmap[$dayName][$hour]++;
+                }
+            }
 
         // 9. New vs Returning Calculation
         // Safely check how many times these visitors have visited the building in their entire history

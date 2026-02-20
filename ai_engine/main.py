@@ -16,10 +16,9 @@ app = Flask(__name__)
 # 🧠 1. TRAFFIC PREDICTION MODEL (Regression)
 # ==========================================
 from sklearn.ensemble import RandomForestRegressor
-
-from sklearn.ensemble import RandomForestRegressor
-
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import pandas as pd
+import numpy as np
+from datetime import datetime
 
 @app.route('/predict-traffic', methods=['POST'])
 def predict_traffic():
@@ -30,45 +29,62 @@ def predict_traffic():
         df = pd.DataFrame(data)
         df['dt'] = pd.to_datetime(df['timestamp'])
         df['hour'] = df['dt'].dt.hour
-        
-        # 1. THE "BASE" (Historical Pattern)
-        # Find the absolute shape of your history
-        historical_shape = df.groupby('hour').size()
-        num_days = df['dt'].dt.date.nunique()
-        
-        # 2. THE "TREND" (Recent Weight)
-        # Look at only the last 7 days to see if traffic is increasing
-        last_7_days = df[df['dt'] > (pd.Timestamp.now() - pd.Timedelta(days=7))]
-        recent_weight = 1.0
-        if not last_7_days.empty:
-            recent_avg = len(last_7_days) / 7
-            total_avg = len(df) / max(num_days, 1)
-            recent_weight = recent_avg / total_avg if total_avg > 0 else 1.0
+        df['date'] = df['dt'].dt.date
+        df['day_of_week'] = df['dt'].dt.dayofweek
 
-        # 3. BUILD THE PREDICTION
+        # 🧠 THE UPGRADE: Exponential Time Decay (Recency Bias)
+        # Calculate how many days ago each visit happened
+        today = pd.Timestamp.now().normalize()
+        df['days_ago'] = (today - df['dt'].dt.normalize()).dt.days.clip(lower=0)
+        
+        # Apply a decay factor (0.95 means every day it gets 5% less important)
+        decay_factor = 0.95
+        df['weight'] = decay_factor ** df['days_ago']
+
+        # ==========================================
+        # STAGE 1: ML VOLUME PREDICTION
+        # ==========================================
+        # Group by date to see total daily traffic and the weight for that day
+        daily_totals = df.groupby(['date', 'day_of_week']).agg(
+            total=('hour', 'size'),
+            day_weight=('weight', 'mean')
+        ).reset_index()
+        
+        if len(daily_totals) < 3:
+            predicted_volume = len(df) / max(len(daily_totals), 1)
+        else:
+            rf = RandomForestRegressor(n_estimators=50, random_state=42)
+            
+            # 🧠 UPGRADE: Tell the AI to prioritize the heavier (more recent) days
+            rf.fit(
+                daily_totals[['day_of_week']], 
+                daily_totals['total'], 
+                sample_weight=daily_totals['day_weight']
+            )
+            
+            today_dow = datetime.today().weekday()
+            predicted_volume = rf.predict(pd.DataFrame({'day_of_week': [today_dow]}))[0]
+
+        # ==========================================
+        # STAGE 2: SHAPE DISTRIBUTION
+        # ==========================================
+        # 🧠 UPGRADE: Instead of counting raw visits, we sum their WEIGHTS
+        hourly_weights = df.groupby('hour')['weight'].sum()
+        total_weight = df['weight'].sum()
+        
         prediction = [0] * 24
-        for hour, count in historical_shape.items():
-            # Calculate average for the hour, then multiply by the recent trend
-            # This makes the AI "smart" about recent changes
-            val = (count / max(num_days, 1)) * recent_weight
-            prediction[hour] = int(np.ceil(val))
+        for hour, weight_sum in hourly_weights.items():
+            # Probability is now weighted (recent patterns shift the curve more)
+            probability = weight_sum / total_weight
+            allocated_visitors = probability * predicted_volume
+            
+            prediction[hour] = int(np.ceil(allocated_visitors))
 
-        # 4. RANDOM FOREST STABILIZER (Optional)
-        # To make the graph look 'AI-generated' and smooth
-        from sklearn.ensemble import RandomForestRegressor
-        X = np.array(range(24)).reshape(-1, 1)
-        y = np.array(prediction)
-        
-        # Use a small forest to smooth the "jagged" bars into a curve
-        smoother = RandomForestRegressor(n_estimators=10, random_state=42)
-        smoother.fit(X, y)
-        final_prediction = smoother.predict(X).round().astype(int).tolist()
-
-        return jsonify({"prediction": final_prediction})
+        return jsonify({"prediction": prediction})
 
     except Exception as e:
-        print(f"❌ Ensemble Error: {e}")
-        return jsonify({"prediction": [0] * 24})
+        print(f"❌ ML Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================

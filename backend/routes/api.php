@@ -8,56 +8,39 @@ use App\Http\Controllers\API\VisitorLogController;
 use App\Http\Controllers\MonitorController;
 
 // ----------------------------------------------------------------
-// 🔐 AUTHENTICATION
+// 🔓 PUBLIC ROUTES (No login required)
 // ----------------------------------------------------------------
 Route::post('/login', [AuthController::class, 'login']);
-
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
-});
-
-// ----------------------------------------------------------------
-// 👤 VISITOR REGISTRATION & LOOKUP
-// ----------------------------------------------------------------
 Route::post('/register', [VisitorController::class, 'store']);
 Route::post('/check-user', [VisitorController::class, 'checkUser']);
-Route::get('/visitors', [VisitorController::class, 'index']);
-Route::get('/visitors/{id}', [VisitorController::class, 'show']);
 
 // ----------------------------------------------------------------
-// 👮‍♂️ ADMIN & OPERATIONS
+// 🔐 PROTECTED ADMIN ROUTES (Requires valid auth_token)
 // ----------------------------------------------------------------
-// Master List
-Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
+Route::middleware('auth:sanctum')->group(function () {
+    
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
 
-// Force Checkout
-Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
+    // Detailed Records
+    Route::get('/visitors', [VisitorController::class, 'index']);
+    Route::get('/visitors/{id}', [VisitorController::class, 'show']);
+    Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
+    
+    // Administrative Actions
+    Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
+    Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
+    
+    // Security & Compliance
+    Route::post('/visitors/{id}/toggle-watchlist', [VisitorController::class, 'toggleWatchlist']);
+    Route::post('/visit-logs/{id}/toggle-flag', [VisitorController::class, 'toggleFlag']);
+    Route::post('/visit-logs/{id}/toggle-manual-flag', [VisitorController::class, 'toggleManualFlag']);
+    Route::post('/visitors/{id}/global-status', [VisitorController::class, 'updateGlobalStatus']);
 
-// Toggle Watchlist (Ban/Unban) - Used by Live Dashboard
-Route::post('/visitors/{id}/toggle-watchlist', [VisitorController::class, 'toggleWatchlist']);
-
-// Toggle Status (Active/Inactive) - Legacy/Masterlist use
-Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
-
-// ----------------------------------------------------------------
-// 📊 DASHBOARD & MONITORING
-// ----------------------------------------------------------------
-// Live Monitor Stats
-Route::get('/live-monitor', [MonitorController::class, 'getLiveStats']);
-
-// Analytics Data (Charts, Heatmap)
-Route::get('/analytics', [VisitorController::class, 'getAnalytics']);
-
-// 🔴 AI Flagging (Suspicious/Safe)
-Route::post('/visit-logs/{id}/toggle-flag', [VisitorController::class, 'toggleFlag']);
-
-// 🟡 Manual Officer Flagging (Must look exactly like this)
-Route::post('/visit-logs/{id}/toggle-manual-flag', [VisitorController::class, 'toggleManualFlag']);
-
-// General Logs
-Route::get('/logs', [VisitorLogController::class, 'index']);
-
-// Unified Global Security Status
-Route::post('/visitors/{id}/global-status', [VisitorController::class, 'updateGlobalStatus']);
-
-Route::get('/admin/ai-summary', [MonitorController::class, 'generateAISummary']);
+    // Analytics & Live Feeds
+    Route::get('/live-monitor', [MonitorController::class, 'getLiveStats']);
+    Route::get('/analytics', [VisitorController::class, 'getAnalytics']);
+    Route::get('/admin/ai-summary', [MonitorController::class, 'generateAISummary']);
+    Route::get('/logs', [VisitorLogController::class, 'index']);
+});

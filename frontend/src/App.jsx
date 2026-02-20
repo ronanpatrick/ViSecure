@@ -17,8 +17,8 @@ function App() {
         {/* 1. Public: Visitor Registration (Default Page for QR Code) */}
         <Route path="/" element={<VisitorRegistration />} />
         
-        {/* 2. Public: Admin Login Page */}
-        <Route path="/login" element={<Login />} />
+        {/* 2. Hidden: Admin Login Page */}
+        <Route path="/nud-security-portal" element={<Login />} />
 
         {/* 3. Protected: Admin Dashboard with Nested Routes */}
         <Route 

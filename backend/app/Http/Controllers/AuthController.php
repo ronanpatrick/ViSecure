@@ -16,21 +16,25 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        // 2. Check if the user exists and password is correct
+        // 2. Attempt to authenticate the user
         if (Auth::attempt($credentials)) {
             $user = Auth::user();
-            // Create a simple token (for now, we'll just return success)
+            
+            // 🔑 CREATE REAL TOKEN: This is required for your protected routes
+            $token = $user->createToken('admin-token')->plainTextToken;
+
             return response()->json([
                 'status' => 'success',
+                'token' => $token,
                 'message' => 'Login successful',
                 'user' => $user
             ]);
         }
 
-        // 3. If failed
+        // 3. Return 401 if authentication fails
         return response()->json([
             'status' => 'error',
-            'message' => 'Invalid credentials'
+            'message' => 'Invalid email or password'
         ], 401);
     }
 }

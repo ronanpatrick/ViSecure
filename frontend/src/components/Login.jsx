@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // 👈 Add useEffect
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -6,11 +6,18 @@ export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const navigate = useNavigate(); // Hook to move between pages
+    const navigate = useNavigate();
+
+    // 🛡️ NEW: If they already have a token, skip the login page entirely
+    useEffect(() => {
+        if (localStorage.getItem('auth_token')) {
+            navigate('/admin');
+        }
+    }, [navigate]);
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        setError(''); // Clear previous errors
+        setError(''); 
 
         try {
             const response = await axios.post('http://127.0.0.1:8000/api/login', {
@@ -18,12 +25,13 @@ export default function Login() {
                 password: password
             });
 
-            if (response.data.status === 'success') {
-                // Save a "flag" that says we are logged in
-                localStorage.setItem('auth_token', 'LOGGED_IN'); 
-                
-                // Redirect to the Dashboard
+            // Make sure your AuthController actually returns a 'token'
+            if (response.data.token) {
+                // 🔒 Save the REAL encrypted token from Laravel, not a fake string
+                localStorage.setItem('auth_token', response.data.token); 
                 navigate('/admin');
+            } else {
+                setError('Login failed. No token received.');
             }
         } catch (err) {
             setError('Invalid email or password');

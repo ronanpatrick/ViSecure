@@ -18,17 +18,19 @@ class TestScenarioSeeder extends Seeder
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
         $faker = \Faker\Factory::create();
-        $departments = ['IT', 'HR', 'Finance', 'Registrar', 'Library', 'Admin', 'Clinic'];
-        $purposes = ['Meeting', 'Inquiry', 'Delivery', 'Interview', 'Enrollment', 'Payment'];
-        $types = ['Student', 'Faculty', 'Guest', 'Contractor', 'Alumni'];
+        
+        // 🌟 EXPANDED DATA DIVERSITY
+        $departments = ['IT', 'HR', 'Finance', 'Registrar', 'Library', 'Admin', 'Clinic', 'Laboratory', 'Gymnasium', 'Auditorium', 'Maintenance'];
+        $purposes = ['Meeting', 'Inquiry', 'Delivery', 'Interview', 'Enrollment', 'Payment', 'Consultation', 'Clearance', 'Event Attendance', 'Repair'];
+        $types = ['Student', 'Faculty', 'Guest', 'Contractor', 'Alumni', 'Parent'];
 
         echo "⏳ Generating Regular Visitor Pool...\n";
-        // CREATE A POOL OF 50 "REGULAR" VISITORS (Students/Faculty)
+        // INCREASED POOL TO 100 FOR A YEAR'S WORTH OF DATA
         $regularIds = [];
-        for ($i = 0; $i < 50; $i++) {
+        for ($i = 0; $i < 100; $i++) {
             $fname = $faker->firstName;
             $lname = $faker->lastName;
-            $regType = ['Student', 'Faculty'][rand(0, 1)];
+            $regType = ['Student', 'Faculty', 'Alumni'][rand(0, 2)];
 
             $regularIds[] = DB::table('visitors')->insertGetId([
                 'FirstName' => $fname,
@@ -41,45 +43,58 @@ class TestScenarioSeeder extends Seeder
                 'Status' => 'Active',
                 'ContactNumber' => $faker->phoneNumber,
                 'Email' => $faker->safeEmail,
-                'created_at' => Carbon::now()->subDays(40), // Registered before history starts
-                'updated_at' => Carbon::now()->subDays(40),
+                'created_at' => Carbon::now()->subDays(450), // Registered way before history starts
+                'updated_at' => Carbon::now()->subDays(450),
             ]);
         }
 
-        echo "⏳ Generating history (Last 30 Days)...\n";
+        echo "⏳ Generating history (Last 400 Days including Weekends)...\n";
+        echo "⚠️  Please wait, generating 15,000+ records...\n";
         
         // ---------------------------------------------------------
-        // 🗓️ PHASE 1: HISTORY (Last 30 Days) - FOR ANALYTICS
+        // 🗓️ PHASE 1: HISTORY (Last 400 Days) - FOR ANALYTICS
         // ---------------------------------------------------------
-        for ($d = 30; $d >= 1; $d--) {
+        for ($d = 400; $d >= 1; $d--) {
             $date = Carbon::today()->subDays($d);
-            if ($date->isWeekend()) continue;
-
-            $dailyVisits = rand(20, 50);
+            
+            // 🧠 SMART VOLUME
+            if ($date->isWeekend()) {
+                $dailyVisits = rand(5, 15); 
+            } else {
+                $dailyVisits = rand(20, 50); 
+            }
 
             for ($v = 0; $v < $dailyVisits; $v++) {
                 $rand = rand(1, 100);
-                if ($rand <= 30) $hour = rand(8, 10);
-                elseif ($rand <= 50) $hour = rand(13, 15);
-                else $hour = rand(7, 18);
+                
+                // 🧠 SMART HOURS
+                if ($date->isWeekend()) {
+                    if ($rand <= 60) $hour = rand(9, 12); 
+                    else $hour = rand(13, 17);
+                } else {
+                    if ($rand <= 30) $hour = rand(8, 10); 
+                    elseif ($rand <= 60) $hour = rand(13, 15); 
+                    else $hour = rand(7, 18); 
+                }
 
                 $entryTime = $date->copy()->setHour($hour)->setMinute(rand(0, 59));
                 $exitTime = $entryTime->copy()->addMinutes(rand(15, 240)); 
 
-                // 60% chance it's a returning regular, 40% chance it's a new guest
                 if (rand(1, 100) <= 60) {
                     $vid = $regularIds[array_rand($regularIds)];
                 } else {
                     $fname = $faker->firstName;
                     $lname = $faker->lastName;
+                    $randomType = $types[array_rand($types)];
+                    
                     $vid = DB::table('visitors')->insertGetId([
                         'FirstName' => $fname,
                         'Surname' => $lname,
                         'FullName' => "$fname $lname", 
-                        'Age' => rand(18, 60),
+                        'Age' => rand(18, 65),
                         'Sex' => rand(0, 1) ? 'Male' : 'Female',
-                        'VisitorType' => 'Guest',
-                        'AffiliationType' => 'Guest',
+                        'VisitorType' => $randomType,
+                        'AffiliationType' => $randomType,
                         'Status' => 'Active',
                         'ContactNumber' => $faker->phoneNumber,
                         'Email' => $faker->safeEmail,
@@ -164,26 +179,27 @@ class TestScenarioSeeder extends Seeder
             'FirstName' => 'Evil', 'Surname' => 'Villain', 'FullName' => 'Evil Villain', 
             'Age' => 50, 'Sex' => 'Male',
             'VisitorType' => 'Blacklisted', 'AffiliationType' => 'Guest', 
-            'Status' => 'Banned', 'IsWatchlisted' => true, 'WatchlistReason' => 'Theft Incident (2025)',
-            'created_at' => $now, 'updated_at' => $now
+            'Status' => 'Banned', 'IsWatchlisted' => true, 'WatchlistReason' => 'Theft Incident',
+            'created_at' => $now->copy()->subMonths(8), 'updated_at' => $now->copy()->subMonths(8)
         ]);
         DB::table('security_logs')->insert([
-            'VisitorID' => $id4, 'Action' => 'BAN', 'Reason' => 'Theft Incident (2025)', 'Officer' => 'Admin', 'created_at' => $now->copy()->subMonths(1)
+            'VisitorID' => $id4, 'Action' => 'BAN', 'Reason' => 'Theft Incident', 'Officer' => 'Admin', 'created_at' => $now->copy()->subMonths(6)
         ]);
 
-        // 🟢 CASE 5: Normal Active Visitors (Mix of new and returning)
+        // 🟢 CASE 5: Normal Active Visitors
         for ($i = 0; $i < 10; $i++) {
             if (rand(1, 100) <= 50) {
-                 $vid = $regularIds[array_rand($regularIds)]; // Returning
+                 $vid = $regularIds[array_rand($regularIds)];
             } else {
                 $fname = $faker->firstName;
                 $lname = $faker->lastName;
+                $randomType = $types[array_rand($types)];
                 $vid = DB::table('visitors')->insertGetId([
                     'FirstName' => $fname, 
                     'Surname' => $lname,
                     'FullName' => "$fname $lname", 
                     'Age' => rand(20, 40), 'Sex' => rand(0, 1) ? 'Male' : 'Female',
-                    'VisitorType' => 'Guest', 'AffiliationType' => 'Guest', 'Status' => 'Active',
+                    'VisitorType' => $randomType, 'AffiliationType' => $randomType, 'Status' => 'Active',
                     'created_at' => $now, 'updated_at' => $now
                 ]);
             }
@@ -191,12 +207,12 @@ class TestScenarioSeeder extends Seeder
             DB::table('visit_logs')->insert([
                 'VisitorID' => $vid,
                 'EntryTimestamp' => $now->copy()->subMinutes(rand(5, 60)),
-                'PurposeOfVisit' => 'Meeting', 'DepartmentToVisit' => $departments[array_rand($departments)],
+                'PurposeOfVisit' => $purposes[array_rand($purposes)], 'DepartmentToVisit' => $departments[array_rand($departments)],
                 'Status' => 'Active',
                 'created_at' => $now, 'updated_at' => $now
             ]);
         }
 
-        echo "✅ Seeder Complete! Database populated with test cases.\n";
+        echo "✅ Seeder Complete! Over 1 year of data populated.\n";
     }
 }
