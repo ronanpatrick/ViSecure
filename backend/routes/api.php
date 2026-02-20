@@ -14,6 +14,10 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [VisitorController::class, 'store']);
 Route::post('/check-user', [VisitorController::class, 'checkUser']);
 
+// 🟢 MOVED HERE: Allow visitors to self-checkout without an Admin token
+Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
+Route::get('/visitors/{id}', [VisitorController::class, 'show']);
+
 // ----------------------------------------------------------------
 // 🔐 PROTECTED ADMIN ROUTES (Requires valid auth_token)
 // ----------------------------------------------------------------
@@ -25,11 +29,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Detailed Records
     Route::get('/visitors', [VisitorController::class, 'index']);
-    Route::get('/visitors/{id}', [VisitorController::class, 'show']);
+    
     Route::get('/admin/all-visitors', [VisitorController::class, 'getAllVisitors']);
     
     // Administrative Actions
-    Route::post('/admin/checkout', [VisitorController::class, 'checkout']);
     Route::put('/admin/visitors/{id}/status', [VisitorController::class, 'toggleStatus']);
     
     // Security & Compliance

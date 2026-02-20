@@ -1,14 +1,17 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
-export default function ProtectedRoute({ children }) {
-    // 1. Check if the user has the "Key" (auth_token) in their browser storage
-    const isAuthenticated = localStorage.getItem('auth_token');
+const ProtectedRoute = ({ children }) => {
+    const token = localStorage.getItem('auth_token');
+    const location = useLocation();
 
-    // 2. If NO key, play dumb and kick them back to the Visitor Registration page!
-    if (!isAuthenticated) {
-        return <Navigate to="/" replace />; // 👈 Changed from "/login" to "/"
+    if (!token) {
+        // 🛡️ SECURITY FIX: Send unauthorized scans to the Login Page, 
+        // not the Visitor Page! We also save the URL they were trying 
+        // to visit so we can send them back there after they log in.
+        return <Navigate to="/nud-security-portal" state={{ from: location }} replace />;
     }
 
-    // 3. If YES key, let them inside (show the Dashboard)
     return children;
-}
+};
+
+export default ProtectedRoute;

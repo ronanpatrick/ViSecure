@@ -5,11 +5,11 @@ import axios from 'axios';
 export default function VisitorPass({ visitor, visitId, onClose }) {
     const [showQr, setShowQr] = useState(false);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
-    
-    // 🆕 NEW: Terminal State Tracker
     const [hasExited, setHasExited] = useState(false); 
 
-    const qrData = `${window.location.origin}/exit?id=${visitId}`;
+    // 🛡️ SECURITY UPDATE: This points to the Guard's Verification screen
+    // 🟢 NEW: Points to the public verification page
+    const qrData = `${window.location.origin}/verify/${visitor.VisitorID}`;
 
     const handleSelfCheckout = async () => {
         if (!window.confirm("Are you exiting the building now?")) return;
@@ -18,13 +18,12 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
         try {
             await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/admin/checkout`, {
                 log_id: visitId,
-                method: 'self' // 👈 NEW: Tells the database the visitor did this
+                method: 'self' 
             });
             
+            // 🆕 Clear storage and transition to terminal state.
             localStorage.removeItem('active_visit_id');
-            
-            // 🆕 NEW: Clear storage, but DON'T reload. Transition to terminal state.
-            localStorage.removeItem('active_visit_id');
+            localStorage.removeItem('active_visitor_id'); // 👈 We now clear this too
             localStorage.removeItem('visitor_name');
             localStorage.removeItem('visitor_type');
             setHasExited(true); 
@@ -36,7 +35,6 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
         }
     };
 
-    // 🌟 TERMINAL STATE UI (The Goodbye Screen)
     if (hasExited) {
         return (
             <div style={{...overlayStyle, backgroundColor: '#f8f9fa', backdropFilter: 'none'}}>
@@ -46,10 +44,7 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
                     <p style={{ color: '#7f8c8d', lineHeight: '1.6' }}>
                         Your visit has been securely logged.<br/>Thank you for visiting ViSecure!
                     </p>
-                    <button 
-                        onClick={() => window.location.href = window.location.pathname} 
-                        style={{...checkoutBtnStyle, backgroundColor: '#e2e8f0', color: '#475569', marginTop: '40px'}}
-                    >
+                    <button onClick={() => window.location.href = window.location.pathname} style={{...checkoutBtnStyle, backgroundColor: '#e2e8f0', color: '#475569', marginTop: '40px'}}>
                         Return to Start
                     </button>
                 </div>
@@ -57,10 +52,8 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
         );
     }
 
-    // 🛡️ ACTIVE BADGE UI (The normal screen)
     return (
         <div style={{...overlayStyle, backgroundColor: '#f8f9fa', backdropFilter: 'none'}}>
-            {/* Removed the dark modal background so it looks like a native full-screen app page! */}
             <div style={{...cardStyle, width: '100%', maxWidth: '400px', height: '100vh', borderRadius: '0', display: 'flex', flexDirection: 'column'}}>
                 
                 <div style={headerStyle}>

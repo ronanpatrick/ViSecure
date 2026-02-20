@@ -247,11 +247,11 @@ class VisitorController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // STORE FUNCTION (UPDATED FOR NEW FIELDS)
+    // STORE FUNCTION (SMART DUPLICATE & FACE VERIFICATION)
     // ------------------------------------------------------------------
     public function store(Request $request)
     {
-        // 1. Validation (Updated with new optional fields)
+        // 1. Standard Validation
         $validated = $request->validate([
             'FirstName'         => 'required|string|max:255',
             'MiddleName'        => 'nullable|string|max:255', 
@@ -267,14 +267,103 @@ class VisitorController extends Controller
             'photos'            => 'array', 
         ]);
 
-        // 2. Check Name Duplicate
-        $visitor = Visitor::where('FirstName', $validated['FirstName'])
-                          ->where('Surname', $validated['Surname'])->first();
-                          
         $isNewUser = false;
+        $visitor = null;
 
-        if ($visitor) {
-            // 🛑 SECURITY CHECK: IS BANNED?
+        // ---------------------------------------------------------
+        // SCENARIO A: NEW REGISTRATION (Includes Photos)
+        // ---------------------------------------------------------
+        if ($request->has('photos') && count($request->photos) > 0) {
+            
+            // 🛑 1. Check if the Face already exists in the AI Database
+            $duplicateID = $this->aiService->findDuplicate($request->photos[0]);
+            
+            if ($duplicateID === "IMAGE_TOO_LARGE") {
+                return response()->json(['message' => 'Image too large.'], 422);
+            }
+
+            if ($duplicateID) {
+                // ⚠️ FACE FOUND: This person has registered before
+                $dupUser = Visitor::find($duplicateID);
+                
+                if ($dupUser && $dupUser->IsWatchlisted) {
+                    return response()->json([
+                        'message' => 'ACCESS DENIED: Face matches BANNED individual.',
+                        'status' => 'BANNED'
+                    ], 403);
+                }
+
+                // Did they type their exact own name in the New Registration form?
+                $nameMatches = (strtolower($dupUser->FirstName) === strtolower($validated['FirstName'])) 
+                            && (strtolower($dupUser->Surname) === strtolower($validated['Surname']));
+
+                if ($nameMatches) {
+                    // ✅ Same Face + Same Name: Treat as Returning Visitor automatically!
+                    $visitor = $dupUser;
+                    $isNewUser = false;
+                } else {
+                    // ❌ Same Face + Different Name: Block the attempt (Identity Mismatch)
+                    return response()->json([
+                        'message' => "This face is already registered as '{$dupUser->FullName}'. Please use Returning Visitor mode."
+                    ], 422);
+                }
+
+            } else {
+                // 🟢 FACE NOT FOUND: This is a brand new face. 
+                // Now we check if they are trying to steal someone else's Name, Phone, or Email!
+
+                $existingByName = Visitor::where('FirstName', $validated['FirstName'])
+                                         ->where('Surname', $validated['Surname'])->first();
+                
+                if ($existingByName) {
+                    return response()->json(['errors' => ['FirstName' => ['This name is already registered to a different face. Please use Returning Visitor mode if this is you.']]], 422);
+                }
+
+                if (!empty($validated['Email']) && Visitor::where('Email', $validated['Email'])->exists()) {
+                    return response()->json(['errors' => ['Email' => ['This email is already registered to another user.']]], 422);
+                }
+                
+                if (!empty($validated['ContactNumber']) && Visitor::where('ContactNumber', $validated['ContactNumber'])->exists()) {
+                    return response()->json(['errors' => ['ContactNumber' => ['This contact number is already registered to another user.']]], 422);
+                }
+
+                // ✅ Everything is completely unique. Create New User!
+                $isNewUser = true;
+                
+                $visitor = Visitor::create([
+                    'FirstName'       => ucwords(strtolower($validated['FirstName'])),
+                    'MiddleName'      => ucwords(strtolower($request->MiddleName ?? '')), 
+                    'Surname'         => ucwords(strtolower($validated['Surname'])),
+                    'FullName'        => ucwords(strtolower(trim($validated['FirstName'] . ' ' . $validated['Surname']))), 
+                    'Age'             => $request->Age,
+                    'Sex'             => $request->Sex,
+                    'VisitorType'     => $validated['VisitorType'],   
+                    'AffiliationType' => $validated['VisitorType'], 
+                    'ContactNumber'   => $request->ContactNumber ?? null,
+                    'Email'           => strtolower($request->Email ?? ''),
+                ]);
+
+                // 🛑 AI ACTION: Validate & Train
+                $success = $this->aiService->validateAndTrain($visitor, $request->photos);
+                if (!$success) {
+                    $visitor->delete();
+                    return response()->json(['message' => 'No face detected. Registration cancelled.'], 422);
+                }
+            }
+
+        } else {
+            // ---------------------------------------------------------
+            // SCENARIO B: RETURNING VISITOR (No Photos attached)
+            // ---------------------------------------------------------
+            // They already passed the Face Scanner login on the frontend.
+            $visitor = Visitor::where('FirstName', $validated['FirstName'])
+                              ->where('Surname', $validated['Surname'])
+                              ->first();
+                              
+            if (!$visitor) {
+                return response()->json(['message' => 'Visitor profile not found.'], 404);
+            }
+
             if ($visitor->IsWatchlisted) {
                 return response()->json([
                     'message' => 'ACCESS DENIED: This individual is BANNED.',
@@ -282,57 +371,6 @@ class VisitorController extends Controller
                 ], 403);
             }
         }
-
-        if (!$visitor) {
-            $isNewUser = true;
-
-            // 🛑 AI CHECK: Duplicate Face?
-            if ($request->has('photos') && count($request->photos) > 0) {
-                $duplicateID = $this->aiService->findDuplicate($request->photos[0]);
-                
-                if ($duplicateID === "IMAGE_TOO_LARGE") {
-                    return response()->json(['message' => 'Image too large.'], 422);
-                }
-                
-                if ($duplicateID) {
-                    $dupUser = Visitor::find($duplicateID);
-                    if ($dupUser && $dupUser->IsWatchlisted) {
-                        return response()->json([
-                             'message' => 'ACCESS DENIED: Face matches BANNED individual.',
-                             'status' => 'BANNED'
-                        ], 403);
-                    }
-                    return response()->json([
-                        'message' => "Face already registered as '{$dupUser->FullName}'."
-                    ], 422);
-                }
-            }
-
-            // Create Visitor
-            $visitor = Visitor::create([
-                'FirstName'       => ucwords(strtolower($validated['FirstName'])),
-                'MiddleName'      => ucwords(strtolower($request->MiddleName ?? '')), 
-                'Surname'         => ucwords(strtolower($validated['Surname'])),
-                'FullName'        => ucwords(strtolower(trim($validated['FirstName'] . ' ' . $validated['Surname']))), 
-                'Age'             => $request->Age,
-                'Sex'             => $request->Sex,
-                
-                'VisitorType'     => $validated['VisitorType'],   
-                'AffiliationType' => $validated['VisitorType'], // 👈 CHANGED THIS FROM 'Visitor'
-                
-                'ContactNumber'   => $request->ContactNumber ?? null,
-                'Email'           => strtolower($request->Email ?? ''),
-            ]);
-
-            // 🛑 AI ACTION: Validate & Train
-            if ($request->has('photos')) {
-                $success = $this->aiService->validateAndTrain($visitor, $request->photos);
-                if (!$success) {
-                    $visitor->delete();
-                    return response()->json(['message' => 'No face detected.'], 422);
-                }
-            }
-        } 
         
         // ---------------------------------------------------------
         // 🧠 AI CHECK: Ask Python if the purpose is suspicious
@@ -340,7 +378,7 @@ class VisitorController extends Controller
         $aiCheck = $this->aiService->checkPurpose($validated['PurposeOfVisit']);
         $isFlagged = $aiCheck['is_suspicious']; 
 
-        // 3. Create Visit Log (Updated with new fields)
+        // 4. Create Visit Log 
         $log = VisitLog::create([
             'VisitorID'           => $visitor->VisitorID,
             'EntryTimestamp'      => now(),
@@ -352,7 +390,7 @@ class VisitorController extends Controller
             'IsFlagged'           => $isFlagged 
         ]);
 
-        // 📝 NEW: Record the physical entry in the Security Audit Trail
+        // 📝 Record the physical entry in the Security Audit Trail
         SecurityLog::create([
             'VisitorID' => $visitor->VisitorID,
             'LogID'     => $log->LogID ?? $log->id,
@@ -361,7 +399,7 @@ class VisitorController extends Controller
             'Officer'   => 'System'
         ]);
 
-        // 🚨 NEW: If flagged by AI, instantly push a Suspicion Alert to the trail
+        // 🚨 If flagged by AI, instantly push a Suspicion Alert to the trail
         if ($isFlagged) {
             SecurityLog::create([
                 'VisitorID' => $visitor->VisitorID,
@@ -379,7 +417,7 @@ class VisitorController extends Controller
             'watchlist_warning' => $visitor->IsWatchlisted ?? false, 
             'watchlist_reason' => $visitor->WatchlistReason ?? null,
             'visitor_id' => $visitor->VisitorID,
-            'log_id' => $log->LogID, // 👈 CHANGE THIS TO LogID
+            'log_id' => $log->LogID ?? $log->id, 
             'is_flagged' => $isFlagged, 
             'warning_message' => $isFlagged ? "⚠️ Monitor: Purpose flagged as suspicious." : null
         ], 201);
