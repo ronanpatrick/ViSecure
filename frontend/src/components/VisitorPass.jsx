@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import QRCode from "react-qr-code";
 import axios from 'axios';
 
@@ -7,9 +7,43 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
     const [isCheckingOut, setIsCheckingOut] = useState(false);
     const [hasExited, setHasExited] = useState(false); 
 
-    // 🛡️ SECURITY UPDATE: This points to the Guard's Verification screen
-    // 🟢 NEW: Points to the public verification page
     const qrData = `${window.location.origin}/verify/${visitor.VisitorID}`;
+
+    // ── Background Listener for Admin Force Exits ───────────────────────
+    useEffect(() => {
+        if (hasExited) return; 
+
+        const checkStatus = async () => {
+            try {
+                const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/visitors/${visitor.VisitorID}`);
+                
+                if (res.data && res.data.logs) {
+                    // FIX: Wrap both IDs in String() to prevent Integer vs String mismatch crashes
+                    const currentLog = res.data.logs.find(l => String(l.LogID) === String(visitId));
+                    
+                    // If the log is found and the ExitTimestamp is no longer null, force them out!
+                    if (currentLog && currentLog.ExitTimestamp !== null) {
+                        clearLocalData();
+                    }
+                }
+            } catch (err) {
+                console.error("Background sync error:", err);
+            }
+        };
+
+        // Ping the server every 3 seconds for a snappier response
+        const interval = setInterval(checkStatus, 3000);
+        return () => clearInterval(interval);
+    }, [hasExited, visitId, visitor.VisitorID]);
+
+    // ── Helper to clear local storage and show exit screen ───────────────────
+    const clearLocalData = () => {
+        localStorage.removeItem('active_visit_id');
+        localStorage.removeItem('active_visitor_id'); 
+        localStorage.removeItem('visitor_name');
+        localStorage.removeItem('visitor_type');
+        setHasExited(true); 
+    };
 
     const handleSelfCheckout = async () => {
         if (!window.confirm("Are you exiting the building now?")) return;
@@ -21,12 +55,7 @@ export default function VisitorPass({ visitor, visitId, onClose }) {
                 method: 'self' 
             });
             
-            // 🆕 Clear storage and transition to terminal state.
-            localStorage.removeItem('active_visit_id');
-            localStorage.removeItem('active_visitor_id'); // 👈 We now clear this too
-            localStorage.removeItem('visitor_name');
-            localStorage.removeItem('visitor_type');
-            setHasExited(true); 
+            clearLocalData();
             
         } catch (err) {
             console.error(err);

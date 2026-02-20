@@ -41,9 +41,10 @@ class TestScenarioSeeder extends Seeder
                 'VisitorType' => $regType,
                 'AffiliationType' => $regType,
                 'Status' => 'Active',
+                'IsWatchlisted' => false,
                 'ContactNumber' => $faker->phoneNumber,
                 'Email' => $faker->safeEmail,
-                'created_at' => Carbon::now()->subDays(450), // Registered way before history starts
+                'created_at' => Carbon::now()->subDays(450), 
                 'updated_at' => Carbon::now()->subDays(450),
             ]);
         }
@@ -96,6 +97,7 @@ class TestScenarioSeeder extends Seeder
                         'VisitorType' => $randomType,
                         'AffiliationType' => $randomType,
                         'Status' => 'Active',
+                        'IsWatchlisted' => false,
                         'ContactNumber' => $faker->phoneNumber,
                         'Email' => $faker->safeEmail,
                         'created_at' => $entryTime,
@@ -103,7 +105,7 @@ class TestScenarioSeeder extends Seeder
                     ]);
                 }
 
-                DB::table('visit_logs')->insert([
+                $logId = DB::table('visit_logs')->insertGetId([
                     'VisitorID' => $vid,
                     'EntryTimestamp' => $entryTime,
                     'ExitTimestamp' => $exitTime,
@@ -112,6 +114,18 @@ class TestScenarioSeeder extends Seeder
                     'Status' => 'Completed',
                     'created_at' => $entryTime,
                     'updated_at' => $entryTime,
+                ]);
+
+                // ADDED: Create routine Entry and Exit logs for the Security Trail
+                DB::table('security_logs')->insert([
+                    [
+                        'VisitorID' => $vid, 'LogID' => $logId, 'Action' => 'SYSTEM_ENTRY', 
+                        'Reason' => 'Authorized Check-in', 'Officer' => 'Auto-Gate', 'created_at' => $entryTime
+                    ],
+                    [
+                        'VisitorID' => $vid, 'LogID' => $logId, 'Action' => 'VISITOR_EXIT', 
+                        'Reason' => 'Standard Checkout', 'Officer' => 'Auto-Gate', 'created_at' => $exitTime
+                    ]
                 ]);
             }
         }
@@ -126,22 +140,29 @@ class TestScenarioSeeder extends Seeder
         $id1 = DB::table('visitors')->insertGetId([
             'FirstName' => 'John', 'Surname' => 'Overstay', 'FullName' => 'John Overstay', 
             'Age' => 30, 'Sex' => 'Male',
-            'VisitorType' => 'Contractor', 'AffiliationType' => 'Contractor', 'Status' => 'Active',
+            'VisitorType' => 'Contractor', 'AffiliationType' => 'Contractor', 
+            'Status' => 'Active', 'IsWatchlisted' => false,
             'created_at' => $now, 'updated_at' => $now
         ]);
-        DB::table('visit_logs')->insert([
+        $log1 = DB::table('visit_logs')->insertGetId([
             'VisitorID' => $id1,
             'EntryTimestamp' => $now->copy()->subHours(6),
             'PurposeOfVisit' => 'Repair', 'DepartmentToVisit' => 'Maintenance',
             'Status' => 'Active',
             'created_at' => $now, 'updated_at' => $now
         ]);
+        DB::table('security_logs')->insert([
+            'VisitorID' => $id1, 'LogID' => $log1, 'Action' => 'SYSTEM_ENTRY', 'Reason' => 'Authorized Check-in', 'Officer' => 'Auto-Gate', 'created_at' => $now->copy()->subHours(6)
+        ]);
 
-        // 🟡 CASE 2: The "Officer Flag"
+        // 🟡 CASE 2: The "Officer Flag" (Global Flag Applied)
         $id2 = DB::table('visitors')->insertGetId([
             'FirstName' => 'Karen', 'Surname' => 'Smith', 'FullName' => 'Karen Smith', 
             'Age' => 45, 'Sex' => 'Female',
-            'VisitorType' => 'Guest', 'AffiliationType' => 'Guest', 'Status' => 'Active',
+            'VisitorType' => 'Guest', 'AffiliationType' => 'Guest', 
+            'Status' => 'Active', 
+            'IsWatchlisted' => true, 
+            'WatchlistReason' => 'Verbal Abuse to Guard',
             'created_at' => $now, 'updated_at' => $now
         ]);
         $log2 = DB::table('visit_logs')->insertGetId([
@@ -149,29 +170,33 @@ class TestScenarioSeeder extends Seeder
             'EntryTimestamp' => $now->copy()->subMinutes(30),
             'PurposeOfVisit' => 'Complaint', 'DepartmentToVisit' => 'Admin',
             'Status' => 'Active',
-            'IsManualFlag' => true,
-            'ManualFlagReason' => 'Verbal Abuse to Guard',
             'created_at' => $now, 'updated_at' => $now
         ]);
         DB::table('security_logs')->insert([
-            'VisitorID' => $id2, 'LogID' => $log2, 'Action' => 'FLAG', 'Reason' => 'Verbal Abuse to Guard', 'Officer' => 'Chief Security', 'created_at' => $now
+            ['VisitorID' => $id2, 'LogID' => $log2, 'Action' => 'SYSTEM_ENTRY', 'Reason' => 'Authorized Check-in', 'Officer' => 'Auto-Gate', 'created_at' => $now->copy()->subMinutes(30)],
+            ['VisitorID' => $id2, 'LogID' => $log2, 'Action' => 'FLAG', 'Reason' => 'Verbal Abuse to Guard', 'Officer' => 'Chief Security', 'created_at' => $now]
         ]);
 
-        // 🤖 CASE 3: The "AI Suspect"
+        // 🤖 CASE 3: The "AI Suspect" (Global Flag Applied)
         $id3 = DB::table('visitors')->insertGetId([
             'FirstName' => 'Robert', 'Surname' => 'Hacker', 'FullName' => 'Robert Hacker', 
             'Age' => 22, 'Sex' => 'Male',
-            'VisitorType' => 'Student', 'AffiliationType' => 'Student', 'Status' => 'Active',
+            'VisitorType' => 'Student', 'AffiliationType' => 'Student', 
+            'Status' => 'Active', 
+            'IsWatchlisted' => true, 
+            'WatchlistReason' => 'Unauthorized Zone',
             'created_at' => $now, 'updated_at' => $now
         ]);
-        DB::table('visit_logs')->insert([
+        $log3 = DB::table('visit_logs')->insertGetId([
             'VisitorID' => $id3,
             'EntryTimestamp' => $now->copy()->subMinutes(10),
             'PurposeOfVisit' => 'Unknown', 'DepartmentToVisit' => 'Server Room',
             'Status' => 'Active',
-            'IsFlagged' => true,
-            'FlagReason' => 'Unauthorized Zone',
             'created_at' => $now, 'updated_at' => $now
+        ]);
+        DB::table('security_logs')->insert([
+            ['VisitorID' => $id3, 'LogID' => $log3, 'Action' => 'SYSTEM_ENTRY', 'Reason' => 'Authorized Check-in', 'Officer' => 'Auto-Gate', 'created_at' => $now->copy()->subMinutes(10)],
+            ['VisitorID' => $id3, 'LogID' => $log3, 'Action' => 'FLAG', 'Reason' => 'Unauthorized Zone', 'Officer' => 'AI System', 'created_at' => $now]
         ]);
 
         // 🚫 CASE 4: The "Banned User"
@@ -183,7 +208,7 @@ class TestScenarioSeeder extends Seeder
             'created_at' => $now->copy()->subMonths(8), 'updated_at' => $now->copy()->subMonths(8)
         ]);
         DB::table('security_logs')->insert([
-            'VisitorID' => $id4, 'Action' => 'BAN', 'Reason' => 'Theft Incident', 'Officer' => 'Admin', 'created_at' => $now->copy()->subMonths(6)
+            'VisitorID' => $id4, 'LogID' => null, 'Action' => 'BAN', 'Reason' => 'Theft Incident', 'Officer' => 'Admin', 'created_at' => $now->copy()->subMonths(6)
         ]);
 
         // 🟢 CASE 5: Normal Active Visitors
@@ -199,17 +224,23 @@ class TestScenarioSeeder extends Seeder
                     'Surname' => $lname,
                     'FullName' => "$fname $lname", 
                     'Age' => rand(20, 40), 'Sex' => rand(0, 1) ? 'Male' : 'Female',
-                    'VisitorType' => $randomType, 'AffiliationType' => $randomType, 'Status' => 'Active',
+                    'VisitorType' => $randomType, 'AffiliationType' => $randomType, 
+                    'Status' => 'Active', 'IsWatchlisted' => false,
                     'created_at' => $now, 'updated_at' => $now
                 ]);
             }
             
-            DB::table('visit_logs')->insert([
+            $entry = $now->copy()->subMinutes(rand(5, 60));
+            $logId = DB::table('visit_logs')->insertGetId([
                 'VisitorID' => $vid,
-                'EntryTimestamp' => $now->copy()->subMinutes(rand(5, 60)),
+                'EntryTimestamp' => $entry,
                 'PurposeOfVisit' => $purposes[array_rand($purposes)], 'DepartmentToVisit' => $departments[array_rand($departments)],
                 'Status' => 'Active',
                 'created_at' => $now, 'updated_at' => $now
+            ]);
+
+            DB::table('security_logs')->insert([
+                'VisitorID' => $vid, 'LogID' => $logId, 'Action' => 'SYSTEM_ENTRY', 'Reason' => 'Authorized Check-in', 'Officer' => 'Auto-Gate', 'created_at' => $entry
             ]);
         }
 

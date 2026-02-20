@@ -5,43 +5,38 @@ import autoTable from 'jspdf-autotable';
 
 export default function VisitorMasterList() {
     const [visitors, setVisitors] = useState([]);
-    const [filteredVisitors, setFilteredVisitors] = useState([]); 
+    const [filteredVisitors, setFilteredVisitors] = useState([]);
     const [loading, setLoading] = useState(true);
-    
-    // SEARCH, FILTER & SORT STATES
+
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
-    
-    const [filterType, setFilterType] = useState('all'); 
+
+    const [filterType, setFilterType] = useState('all');
     const [sortConfig, setSortConfig] = useState({ key: 'LastVisit', direction: 'desc' });
     const [filters, setFilters] = useState({ affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' });
 
-    // PAGINATION STATES
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // MODAL STATE
     const [selectedVisitor, setSelectedVisitor] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
-    const [inputMode, setInputMode] = useState(null); 
-    const [actionReason, setActionReason] = useState(""); 
+    const [inputMode, setInputMode] = useState(null);
+    const [actionReason, setActionReason] = useState('');
 
     const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
-    useEffect(() => { if (!selectedVisitor) { setInputMode(null); setActionReason(""); } }, [selectedVisitor]);
+    useEffect(() => { if (!selectedVisitor) { setInputMode(null); setActionReason(''); } }, [selectedVisitor]);
     useEffect(() => { fetchVisitors(); }, []);
 
-    // ADVANCED FILTER & SORT LOGIC
     useEffect(() => {
         let results = [...visitors];
 
         if (searchTerm) {
             const lowerTerm = searchTerm.toLowerCase();
-            results = results.filter(v => 
+            results = results.filter(v =>
                 v.FullName.toLowerCase().includes(lowerTerm) ||
-                // 👈 Updated to VisitorType
                 (v.VisitorType && v.VisitorType.toLowerCase().includes(lowerTerm)) ||
                 (v.ContactNumber && v.ContactNumber.toLowerCase().includes(lowerTerm)) ||
                 (v.Email && v.Email.toLowerCase().includes(lowerTerm)) ||
@@ -55,13 +50,16 @@ export default function VisitorMasterList() {
             else if (filterType === 'active') results = results.filter(v => v.Status === 'Active' && !v.IsWatchlisted);
         }
 
-        // 👈 Updated to VisitorType
         if (filters.affiliation !== 'All') results = results.filter(v => v.VisitorType === filters.affiliation || v.AffiliationType === filters.affiliation);
+        
+        // Registration Date Filtering
         if (filters.regStart) results = results.filter(v => new Date(v.created_at) >= new Date(filters.regStart));
         if (filters.regEnd) {
             const endDate = new Date(filters.regEnd); endDate.setHours(23, 59, 59);
             results = results.filter(v => new Date(v.created_at) <= endDate);
         }
+        
+        // Visit Date Filtering
         if (filters.visitStart || filters.visitEnd) {
             results = results.filter(v => {
                 if (!v.logs || v.logs.length === 0) return false;
@@ -77,10 +75,9 @@ export default function VisitorMasterList() {
 
         results.sort((a, b) => {
             let aVal, bVal;
-            if (sortConfig.key === 'FullName') { aVal = a.FullName.toLowerCase(); bVal = b.FullName.toLowerCase(); } 
-            // 👈 Updated to VisitorType
-            else if (sortConfig.key === 'VisitorType') { aVal = (a.VisitorType || a.AffiliationType || '').toLowerCase(); bVal = (b.VisitorType || b.AffiliationType || '').toLowerCase(); } 
-            else if (sortConfig.key === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); } 
+            if (sortConfig.key === 'FullName') { aVal = a.FullName.toLowerCase(); bVal = b.FullName.toLowerCase(); }
+            else if (sortConfig.key === 'VisitorType') { aVal = (a.VisitorType || a.AffiliationType || '').toLowerCase(); bVal = (b.VisitorType || b.AffiliationType || '').toLowerCase(); }
+            else if (sortConfig.key === 'created_at') { aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); }
             else if (sortConfig.key === 'LastVisit') {
                 aVal = a.logs && a.logs.length > 0 ? Math.max(...a.logs.map(l => new Date(l.EntryTimestamp).getTime())) : 0;
                 bVal = b.logs && b.logs.length > 0 ? Math.max(...b.logs.map(l => new Date(l.EntryTimestamp).getTime())) : 0;
@@ -91,10 +88,9 @@ export default function VisitorMasterList() {
         });
 
         setFilteredVisitors(results);
-        setCurrentPage(1); 
+        setCurrentPage(1);
     }, [searchTerm, filterType, filters, sortConfig, visitors]);
 
-    // PAGINATION MATH
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
     const currentItems = filteredVisitors.slice(indexOfFirstItem, indexOfLastItem);
@@ -127,428 +123,662 @@ export default function VisitorMasterList() {
                 status: targetLevel,
                 reason: targetLevel === 'Cleared' ? 'Record Cleared' : actionReason
             });
-            fetchVisitors(); 
+            fetchVisitors();
             const response = await axios.get(`${API_BASE}/api/visitors/${vid}`);
             setSelectedVisitor(response.data);
-            setInputMode(null); setActionReason("");
-        } catch (error) { alert("Action Failed. Please check network."); }
+            setInputMode(null); setActionReason('');
+        } catch (error) { alert('Action Failed. Please check network.'); }
     };
-    
+
     const handleRowClick = async (visitor) => {
         setShowModal(true);
         setHistoryLoading(true);
         try {
             const response = await axios.get(`${API_BASE}/api/visitors/${visitor.VisitorID}`);
             setSelectedVisitor(response.data);
-        } catch (error) { console.error(error); } 
+        } catch (error) { console.error(error); }
         finally { setHistoryLoading(false); }
     };
 
     const getStatusBadge = (visitor) => {
-        if (visitor.Status === 'Banned') {
-            return (
-                <span className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-600/20">
-                    Banned
-                </span>
-            );
-        }
-        if (!!visitor.IsWatchlisted) {
-            return (
-                <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-600/20">
-                    Flagged
-                </span>
-            );
-        }
-        return (
-            <span className="inline-flex items-center rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-600/20">
-                Cleared
-            </span>
-        );
+        if (visitor.Status === 'Banned') return <StatusPill variant="banned">Banned</StatusPill>;
+        if (!!visitor.IsWatchlisted) return <StatusPill variant="flagged">Flagged</StatusPill>;
+        return <StatusPill variant="cleared">Cleared</StatusPill>;
     };
 
     const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
-    const clearFilters = () => { 
-        setFilters({ affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' }); 
+    const clearFilters = () => {
+        setFilters({ affiliation: 'All', regStart: '', regEnd: '', visitStart: '', visitEnd: '' });
         setSearchTerm(''); setFilterType('all'); setSortConfig({ key: 'LastVisit', direction: 'desc' });
     };
-    
-    // 👈 Updated to VisitorType
+
     const uniqueAffiliations = [...new Set(visitors.map(v => v.VisitorType || v.AffiliationType || 'Visitor'))];
     const activeCount = visitors.filter(v => v.Status === 'Active' && !v.IsWatchlisted).length;
     const watchlistedCount = visitors.filter(v => Boolean(v.IsWatchlisted) && v.Status !== 'Banned').length;
     const bannedCount = visitors.filter(v => v.Status === 'Banned').length;
 
-    const ChipButton = ({ label, count, active, type, onClick }) => {
-        let baseColor = '#e5e7eb'; let activeColor = '#1f2937'; let textColor = '#374151'; let activeText = 'white';
-        if (type === 'banned') { baseColor = '#fee2e2'; activeColor = '#dc2626'; textColor = '#b91c1c'; }
-        if (type === 'watchlisted') { baseColor = '#fef3c7'; activeColor = '#d97706'; textColor = '#92400e'; }
-        if (type === 'active') { baseColor = '#dcfce7'; activeColor = '#16a34a'; textColor = '#166534'; }
-        return (
-            <button onClick={onClick} style={{ padding: '6px 16px', borderRadius: '20px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', marginRight: '8px', backgroundColor: active ? activeColor : baseColor, color: active ? activeText : textColor }}>
-                {label} <span style={{ opacity: 0.8, fontSize: '0.9em', marginLeft: '4px' }}>({count})</span>
-            </button>
-        );
-    };
+    const downloadCSV = () => {
+        try {
+            if (filteredVisitors.length === 0) return alert('No records to export.');
 
-    const SortableHeader = ({ label, sortKey }) => {
-        const isActive = sortConfig.key === sortKey;
-        return (
-            <th
-                style={{ ...styles.th, cursor: 'pointer', userSelect: 'none', backgroundColor: isActive ? '#f3f4f6' : '#f9fafb' }}
-                onClick={() => requestSort(sortKey)}
-                title={`Click to sort by ${label}`}
-                className={`px-6 py-3 text-left text-xs font-semibold tracking-wider uppercase border-b border-slate-200 ${
-                    isActive ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-500'
-                }`}
-            >
-                <div className="flex items-center gap-1.5">
-                    <span>{label}</span>
-                    <span className={`text-[11px] font-bold ${isActive ? 'text-slate-700' : 'text-slate-300'}`}>
-                        {isActive ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                    </span>
-                </div>
-            </th>
-        );
-    };
+            let csvContent = "Visitor ID,Full Name,Classification,Clearance Status,Contact,Email,Registered Date\n";
 
-    // --- EXPORTS LOGIC ---
-    const downloadCSV = () => { /* Logic unchanged */ };
-    const downloadPDF = () => { /* Logic unchanged */ };
-    const downloadVisitorProfilePDF = () => { /* Logic unchanged */ };
-
-    // --- STYLES ---
-    const styles = {
-        topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' },
-        searchGroup: { display: 'flex', gap: '10px', alignItems: 'center' },
-        searchInput: { padding: '10px 15px', width: '250px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' },
-        iconBtn: { backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', fontWeight: '600' },
-        filterPanel: { backgroundColor: '#f9fafb', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid #e5e7eb', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start', animation: 'fadeIn 0.3s ease-in-out' },
-        filterSection: { display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '20px', borderRight: '1px solid #e5e7eb' },
-        inputGroup: { display: 'flex', flexDirection: 'column', gap: '5px' },
-        label: { fontSize: '11px', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' },
-        select: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: 'white', minWidth: '160px', cursor: 'pointer' },
-        dateInput: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: 'white' },
-        clearBtn: { padding: '8px 16px', backgroundColor: 'white', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', alignSelf: 'flex-end', marginBottom: '5px' },
-        tableWrapper: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', overflow: 'hidden', border: '1px solid #e5e7eb' },
-        table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
-        th: { backgroundColor: '#f9fafb', padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e5e7eb' },
-        td: { padding: '16px', borderBottom: '1px solid #f3f4f6', color: '#1f2937', verticalAlign: 'middle' },
-        row: { cursor: 'pointer', transition: 'all 0.1s ease-in-out' },
-        avatar: { width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e0e7ff', color: '#4f46e5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700', marginRight: '12px', flexShrink: 0 },
-        modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' },
-        modalContent: { backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '900px', maxHeight: '80vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' },
-        closeBtn: { alignSelf: 'flex-end', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' },
-        inputStyle: { width: '100%', padding: '10px', borderRadius: '6px', fontSize:'13px', boxSizing: 'border-box', marginTop:'5px', outline:'none' }
-    };
-
- const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];   
- 
-    return (
-        <div className="fade-in">
-            {/* 1. TOP BAR */}
-            <div style={styles.topBar}>
-                <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1c23', fontWeight: '700' }}>Visitor Master Records</h2>
+            filteredVisitors.forEach(v => {
+                const status = v.Status === 'Banned' ? 'Banned' : (v.IsWatchlisted ? 'Flagged' : 'Cleared');
+                const type = v.VisitorType || v.AffiliationType || 'Visitor';
+                const date = v.created_at ? new Date(v.created_at).toLocaleDateString('en-US') : 'N/A';
                 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '12px' }}>
-                    <div style={styles.searchGroup}>
-                        <input type="text" placeholder="Search name, ID..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={styles.searchInput} />
-                        <button onClick={() => setShowFilters(!showFilters)} style={{ ...styles.iconBtn, backgroundColor: showFilters ? '#e5e7eb' : 'white' }}>Filters</button>
-                        
-                        <div style={{width: '1px', height: '24px', backgroundColor: '#d1d5db', margin: '0 5px'}}></div>
+                const row = [
+                    v.VisitorID || '-',
+                    `"${(v.FullName || 'Unknown').replace(/"/g, '""')}"`,
+                    `"${type}"`,
+                    status,
+                    `"${(v.ContactNumber || '').replace(/"/g, '""')}"`,
+                    `"${(v.Email || '').replace(/"/g, '""')}"`,
+                    date
+                ].join(',');
+                
+                csvContent += row + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `ViSecure_Masterlist_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("CSV Export Error:", err);
+            alert("Failed to export CSV. A background error occurred.");
+        }
+    };
+
+    const downloadPDF = () => {
+        try {
+            if (filteredVisitors.length === 0) return alert('No records to export.');
+            
+            const doc = new jsPDF();
+            
+            doc.setFontSize(16);
+            doc.setTextColor(15, 23, 42);
+            doc.text('ViSecure - Visitor Masterlist', 14, 20);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated on: ${new Date().toLocaleString()} | Total Records: ${filteredVisitors.length}`, 14, 28);
+
+            const tableData = filteredVisitors.map(v => {
+                const status = v.Status === 'Banned' ? 'Banned' : (v.IsWatchlisted ? 'Flagged' : 'Cleared');
+                const type = v.VisitorType || v.AffiliationType || 'Visitor';
+                const date = v.created_at ? new Date(v.created_at).toLocaleDateString('en-US') : 'N/A';
+                
+                return [
+                    v.VisitorID?.toString() || '-', 
+                    v.FullName || 'Unknown', 
+                    type, 
+                    status, 
+                    date
+                ];
+            });
+
+            autoTable(doc, {
+                startY: 35,
+                head: [['ID', 'Name', 'Classification', 'Status', 'Registered Date']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
+                styles: { fontSize: 9 }
+            });
+
+            doc.save(`ViSecure_Masterlist_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (err) {
+            console.error("PDF Export Error:", err);
+            alert("Failed to export PDF. A background error occurred.");
+        }
+    };
+
+    const downloadVisitorProfilePDF = () => {
+        try {
+            if (!selectedVisitor) return alert("No visitor selected.");
+            
+            const doc = new jsPDF();
+            let currentY = 20;
+
+            // Header
+            doc.setFontSize(18);
+            doc.setTextColor(15, 23, 42);
+            doc.text('ViSecure Security Dossier', 14, currentY);
+            currentY += 8;
+
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, currentY);
+            currentY += 14;
+
+            // Personal Data Section
+            doc.setFontSize(11);
+            doc.setTextColor(99, 102, 241);
+            doc.text('PERSONAL DATA', 14, currentY);
+            currentY += 6;
+
+            const status = selectedVisitor.Status === 'Banned' ? 'BANNED' : (selectedVisitor.IsWatchlisted ? 'FLAGGED' : 'CLEARED');
+            const type = selectedVisitor.VisitorType || selectedVisitor.AffiliationType || 'Visitor';
+
+            autoTable(doc, {
+                startY: currentY,
+                head: [['Field', 'Information']],
+                body: [
+                    ['Visitor ID', `#${selectedVisitor.VisitorID || '-'}`],
+                    ['Full Name', selectedVisitor.FullName || 'Unknown'],
+                    ['Classification', type],
+                    ['Clearance Status', status],
+                    ['Age / Sex', `${selectedVisitor.Age || 'N/A'} / ${selectedVisitor.Sex || 'N/A'}`],
+                    ['Contact Number', selectedVisitor.ContactNumber || 'N/A'],
+                    ['Email', selectedVisitor.Email || 'N/A']
+                ],
+                theme: 'plain',
+                styles: { cellPadding: 3, fontSize: 10, textColor: [51, 65, 85] },
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [15, 23, 42] } },
+                didDrawPage: (d) => { currentY = d.cursor.y; }
+            });
+
+            currentY += 12;
+
+            // Security Audit Trail Section
+            const secLogs = selectedVisitor.security_logs || selectedVisitor.securityLogs || [];
+            if (secLogs.length > 0) {
+                doc.setFontSize(11);
+                doc.setTextColor(99, 102, 241);
+                doc.text('SECURITY AUDIT TRAIL', 14, currentY);
+                currentY += 6;
+
+                autoTable(doc, {
+                    startY: currentY,
+                    head: [['Date/Time', 'Action', 'Officer', 'Reason']],
+                    body: secLogs.map(log => [
+                        log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A',
+                        (log.Action || 'UNKNOWN').replace(/_/g, ' '),
+                        log.Officer || 'System',
+                        log.Reason || '-'
+                    ]),
+                    theme: 'striped',
+                    headStyles: { fillColor: [220, 38, 38] }, // Red for security context
+                    styles: { fontSize: 9 },
+                    didDrawPage: (d) => { currentY = d.cursor.y; }
+                });
+                currentY += 12;
+            }
+
+            // Visit History Section
+            const visits = selectedVisitor.logs || [];
+            if (visits.length > 0) {
+                doc.setFontSize(11);
+                doc.setTextColor(99, 102, 241);
+                doc.text('VISIT HISTORY', 14, currentY);
+                currentY += 6;
+
+                autoTable(doc, {
+                    startY: currentY,
+                    head: [['Date', 'Time In', 'Time Out', 'Purpose', 'Department']],
+                    body: visits.map(log => [
+                        log.EntryTimestamp ? new Date(log.EntryTimestamp).toLocaleDateString() : 'N/A',
+                        log.EntryTimestamp ? new Date(log.EntryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
+                        log.ExitTimestamp ? new Date(log.ExitTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'ACTIVE',
+                        log.PurposeOfVisit || '-',
+                        log.DepartmentToVisit || '-'
+                    ]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [71, 85, 105] }, // Slate color
+                    styles: { fontSize: 9 },
+                    didDrawPage: (d) => { currentY = d.cursor.y; }
+                });
+            }
+
+            const safeName = (selectedVisitor.FullName || 'Visitor').replace(/\s+/g, '_');
+            doc.save(`ViSecure_Dossier_${safeName}.pdf`);
+        } catch (err) {
+            console.error("Dossier Export Error:", err);
+            alert("Failed to export Dossier. A background error occurred.");
+        }
+    };
+
+    const secLogs = selectedVisitor ? (selectedVisitor.security_logs || selectedVisitor.securityLogs || []) : [];
+
+    return (
+        <>
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+                .vml-root * { box-sizing: border-box; font-family: 'DM Sans', sans-serif; }
+                @keyframes vml-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+                .vml-fade { animation: vml-fade 0.2s ease; }
+                .vml-row:hover { background: #f8fafc !important; }
+                .vml-row:hover .vml-row-name { color: #4f46e5 !important; }
+                .vml-export-btn:hover { background: #f8fafc !important; }
+                .vml-input:focus { border-color: #6366f1 !important; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+                .vml-select:focus { border-color: #6366f1 !important; outline: none; }
+                .vml-icon-btn:hover { background: #f1f5f9 !important; border-color: #cbd5e1 !important; }
+                .vml-pg-btn:not(:disabled):hover { background: #f1f5f9 !important; }
+                .vml-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+            `}</style>
+
+            <div className="vml-root" style={{ color: '#0f172a' }}>
+
+                {/* PAGE HEADER */}
+                <div style={{ marginBottom: 24 }}>
+                    <h1 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Visitor Master Records</h1>
+                    <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>
+                        {filteredVisitors.length} of {visitors.length} records
+                    </p>
+                </div>
+
+                {/* TOOLBAR */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+
+                    {/* Left: search + buttons */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <div style={{ position: 'relative' }}>
-                            <button onClick={() => setShowExportMenu(!showExportMenu)} style={{ ...styles.iconBtn, backgroundColor: showExportMenu ? '#e5e7eb' : 'white' }}>
-                                Export ▾
+                            <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                            <input
+                                type="text"
+                                placeholder="Search name, ID, contact..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="vml-input"
+                                style={{ paddingLeft: 32, paddingRight: 12, paddingTop: 8, paddingBottom: 8, width: 260, borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff', color: '#0f172a', fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s' }}
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="vml-icon-btn"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 8, border: '1px solid #e2e8f0', background: showFilters ? '#f1f5f9' : '#fff', fontSize: 13, fontWeight: 500, color: '#475569', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}
+                        >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                            Filters
+                        </button>
+
+                        <div style={{ width: 1, height: 22, background: '#e2e8f0' }} />
+
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className="vml-icon-btn"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 8, border: '1px solid #e2e8f0', background: showExportMenu ? '#f1f5f9' : '#fff', fontSize: 13, fontWeight: 500, color: '#475569', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}
+                            >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                Export
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
                             </button>
                             {showExportMenu && (
-                                <div className="fade-in" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: '180px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                    <button onClick={() => { downloadCSV(); setShowExportMenu(false); }} style={{ padding: '12px 15px', textAlign: 'left', background: 'white', border: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}>Full List (CSV)</button>
-                                    <button onClick={() => { downloadPDF(); setShowExportMenu(false); }} style={{ padding: '12px 15px', textAlign: 'left', background: 'white', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', gap: '8px' }}>Summary (PDF)</button>
+                                <div className="vml-fade" style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.10)', zIndex: 50, minWidth: 180, overflow: 'hidden' }}>
+                                    <button className="vml-export-btn" onClick={() => { downloadCSV(); setShowExportMenu(false); }} style={{ width: '100%', padding: '11px 15px', textAlign: 'left', background: '#fff', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#334155', fontFamily: 'inherit', transition: 'background 0.1s' }}>
+                                        Full List (CSV)
+                                    </button>
+                                    <button className="vml-export-btn" onClick={() => { downloadPDF(); setShowExportMenu(false); }} style={{ width: '100%', padding: '11px 15px', textAlign: 'left', background: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#334155', fontFamily: 'inherit', transition: 'background 0.1s' }}>
+                                        Summary (PDF)
+                                    </button>
                                 </div>
                             )}
                         </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <ChipButton label="All Records" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
-                        <ChipButton label="Cleared" count={activeCount} active={filterType === 'active'} type="active" onClick={() => setFilterType('active')} />
-                        <ChipButton label="Flagged" count={watchlistedCount} active={filterType === 'watchlisted'} type="watchlisted" onClick={() => setFilterType('watchlisted')} />
-                        <ChipButton label="Banned" count={bannedCount} active={filterType === 'banned'} type="banned" onClick={() => setFilterType('banned')} />
+
+                    {/* Right: filter chips */}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        <FilterChip label="All Records" count={visitors.length} active={filterType === 'all'} onClick={() => setFilterType('all')} />
+                        <FilterChip label="Cleared" count={activeCount} active={filterType === 'active'} variant="cleared" onClick={() => setFilterType('active')} />
+                        <FilterChip label="Flagged" count={watchlistedCount} active={filterType === 'watchlisted'} variant="flagged" onClick={() => setFilterType('watchlisted')} />
+                        <FilterChip label="Banned" count={bannedCount} active={filterType === 'banned'} variant="banned" onClick={() => setFilterType('banned')} />
                     </div>
                 </div>
-            </div>
 
-            {/* 2. FILTERS */}
-            {showFilters && (
-                <div style={styles.filterPanel}>
-                    <div style={styles.filterSection}>
-                        <div style={styles.inputGroup}>
-                            <span style={styles.label}>Clearance Status</span>
-                            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={styles.select}>
+                {/* FILTER PANEL */}
+                {showFilters && (
+                    <div className="vml-fade" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px', marginBottom: 16, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                        <FilterGroup label="Clearance Status">
+                            <select className="vml-select" value={filterType} onChange={(e) => setFilterType(e.target.value)} style={selectStyle}>
                                 <option value="all">All Statuses</option>
-                                <option value="active">Cleared (Active)</option>
-                                <option value="watchlisted">Flagged / Watchlist</option>
+                                <option value="active">Cleared</option>
+                                <option value="watchlisted">Flagged</option>
                                 <option value="banned">Banned</option>
                             </select>
-                        </div>
-                        <div style={styles.inputGroup}>
-                            <span style={styles.label}>Sort By</span>
-                            <select value={`${sortConfig.key}|${sortConfig.direction}`} onChange={handleAdvancedSortChange} style={styles.select}>
+                        </FilterGroup>
+
+                        <FilterGroup label="Sort By">
+                            <select className="vml-select" value={`${sortConfig.key}|${sortConfig.direction}`} onChange={handleAdvancedSortChange} style={selectStyle}>
                                 <option value="LastVisit|desc">Last Visit (Newest)</option>
                                 <option value="LastVisit|asc">Last Visit (Oldest)</option>
                                 <option value="created_at|desc">First Registered (Newest)</option>
                                 <option value="created_at|asc">First Registered (Oldest)</option>
-                                <option value="FullName|asc">Visitor Name (A-Z)</option>
-                                <option value="FullName|desc">Visitor Name (Z-A)</option>
+                                <option value="FullName|asc">Name (A-Z)</option>
+                                <option value="FullName|desc">Name (Z-A)</option>
                             </select>
-                        </div>
-                    </div>
-                    <div style={styles.filterSection}>
-                        <div style={styles.inputGroup}>
-                            <span style={styles.label}>Classification</span>
-                            <select value={filters.affiliation} onChange={(e) => handleFilterChange('affiliation', e.target.value)} style={styles.select}>
+                        </FilterGroup>
+
+                        <FilterGroup label="Classification">
+                            <select className="vml-select" value={filters.affiliation} onChange={(e) => handleFilterChange('affiliation', e.target.value)} style={selectStyle}>
                                 <option value="All">All Types</option>
-                                {uniqueAffiliations.map(type => (<option key={type} value={type}>{type}</option>))}
+                                {uniqueAffiliations.map(type => <option key={type} value={type}>{type}</option>)}
                             </select>
-                        </div>
-                    </div>
-                    <div style={styles.filterSection}>
-                        <span style={{fontSize: '11px', fontWeight: 'bold', color: '#374151', marginBottom: '5px'}}>Registration Date</span>
-                        <div style={{display: 'flex', gap: '10px'}}>
-                            <div style={styles.inputGroup}><span style={styles.label}>From</span><input type="date" value={filters.regStart} onChange={(e) => handleFilterChange('regStart', e.target.value)} style={styles.dateInput} /></div>
-                            <div style={styles.inputGroup}><span style={styles.label}>To</span><input type="date" value={filters.regEnd} onChange={(e) => handleFilterChange('regEnd', e.target.value)} style={styles.dateInput} /></div>
-                        </div>
-                    </div>
-                    <button onClick={clearFilters} style={styles.clearBtn}>Reset All</button>
-                </div>
-            )}
-            
-            {/* 3. TABLE */}
-            {loading ? <p>Loading records...</p> : (
-                <div style={styles.tableWrapper} className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                    <div className="overflow-x-auto">
-                        <table style={styles.table} className="min-w-full text-sm">
-                            <thead className="bg-slate-50">
-                                <tr>
-                                <SortableHeader label="Visitor Identity" sortKey="FullName" />
-                                {/* Updated sortKey to VisitorType */}
-                                <SortableHeader label="Classification" sortKey="VisitorType" />
-                                <th
-                                    style={{ ...styles.th, cursor: 'default' }}
-                                    className="px-6 py-3 text-left text-xs font-semibold tracking-wider uppercase text-slate-500 border-b border-slate-200 bg-slate-50"
-                                >
-                                    Clearance
-                                </th>
-                                <SortableHeader label="First Registered" sortKey="created_at" />
-                                <SortableHeader label="Last Visit" sortKey="LastVisit" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {currentItems.length > 0 ? currentItems.map((visitor) => {
-                                const lastLog = visitor.logs && visitor.logs.length > 0 ? [...visitor.logs].sort((a,b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0] : null;
-                                // 👈 Updated to VisitorType first
-                                const displayClassification = visitor.VisitorType || visitor.AffiliationType || 'Visitor';
+                        </FilterGroup>
 
-                                return (
-                                    <tr
-                                        key={visitor.VisitorID}
-                                        style={styles.row}
-                                        onClick={() => handleRowClick(visitor)}
-                                        title="Click to view full security profile"
-                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                        className="border-b border-slate-100 hover:bg-slate-50 last:border-b-0"
-                                    >
-                                        <td style={styles.td} className="px-6 py-4 text-sm text-slate-700 align-middle">
-                                            <div style={{display:'flex', alignItems:'center'}}>
-                                                <div style={styles.avatar}>{(visitor.FirstName && visitor.FirstName[0])}{(visitor.Surname && visitor.Surname[0])}</div>
-                                                <div>
-                                                    <div style={{fontWeight: 'bold', color: '#111827', fontSize: '15px'}}>{visitor.FullName}</div>
-                                                    <div style={{fontSize: '12px', color: '#6b7280', marginTop: '2px', fontWeight: '500'}}>ID: #{visitor.VisitorID}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td style={styles.td} className="px-6 py-4 text-sm text-slate-700 align-middle">
-                                            <div style={{fontWeight: '600', color: '#374151'}}>{displayClassification}</div>
-                                        </td>
-                                        <td style={styles.td} className="px-6 py-4 text-sm text-slate-700 align-middle">
-                                            {getStatusBadge(visitor)}
-                                        </td>
-                                        <td style={styles.td} className="px-6 py-4 text-sm text-slate-700 align-middle">
-                                            <div style={{color: '#4b5563', fontSize: '13px'}}>{new Date(visitor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
-                                        </td>
-                                        <td style={styles.td} className="px-6 py-4 text-sm text-slate-700 align-middle">
-                                            {lastLog ? (
-                                                <div>
-                                                    <div style={{color: '#111827', fontWeight: '500', fontSize: '13px'}}>{new Date(lastLog.EntryTimestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
-                                                    <div style={{color: '#6b7280', fontSize: '11px', marginTop: '2px'}}>{new Date(lastLog.EntryTimestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
-                                                </div>
-                                            ) : (<span style={{color: '#9ca3af', fontSize: '13px', fontStyle: 'italic'}}>No visits yet</span>)}
-                                        </td>
+                        <FilterGroup label="Registration Date">
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input type="date" value={filters.regStart} onChange={(e) => handleFilterChange('regStart', e.target.value)} className="vml-input" style={{ ...dateInputStyle }} />
+                                <input type="date" value={filters.regEnd} onChange={(e) => handleFilterChange('regEnd', e.target.value)} className="vml-input" style={{ ...dateInputStyle }} />
+                            </div>
+                        </FilterGroup>
+
+                        {/* NEW: Visit Date Filter Group */}
+                        <FilterGroup label="Visit Date">
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input type="date" value={filters.visitStart} onChange={(e) => handleFilterChange('visitStart', e.target.value)} className="vml-input" style={{ ...dateInputStyle }} />
+                                <input type="date" value={filters.visitEnd} onChange={(e) => handleFilterChange('visitEnd', e.target.value)} className="vml-input" style={{ ...dateInputStyle }} />
+                            </div>
+                        </FilterGroup>
+
+                        <button onClick={clearFilters} style={{ padding: '8px 14px', background: '#fff', border: '1px solid #fca5a5', color: '#ef4444', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                            Reset All
+                        </button>
+                    </div>
+                )}
+
+                {/* TABLE */}
+                {loading ? (
+                    <div style={{ padding: '48px 0', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading records...</div>
+                ) : (
+                    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                <thead>
+                                    <tr style={{ background: '#f8fafc' }}>
+                                        <SortableHeader label="Visitor Identity" sortKey="FullName" sortConfig={sortConfig} onSort={requestSort} />
+                                        <SortableHeader label="Classification" sortKey="VisitorType" sortConfig={sortConfig} onSort={requestSort} />
+                                        <th style={thStyle}>Clearance</th>
+                                        <SortableHeader label="First Registered" sortKey="created_at" sortConfig={sortConfig} onSort={requestSort} />
+                                        <SortableHeader label="Last Visit" sortKey="LastVisit" sortConfig={sortConfig} onSort={requestSort} />
                                     </tr>
-                                );
-                            }) : (
-                                <tr className="border-b border-slate-100 last:border-b-0">
-                                    <td colSpan="5" style={{padding: '40px', textAlign: 'center', color: '#9ca3af'}} className="px-6 py-10 text-center text-sm text-slate-500">
-                                        No records match your filters.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                    </div>
-                </div>
-            )}
+                                </thead>
+                                <tbody>
+                                    {currentItems.length > 0 ? currentItems.map((visitor) => {
+                                        const lastLog = visitor.logs && visitor.logs.length > 0
+                                            ? [...visitor.logs].sort((a, b) => new Date(b.EntryTimestamp) - new Date(a.EntryTimestamp))[0]
+                                            : null;
+                                        const displayClassification = visitor.VisitorType || visitor.AffiliationType || 'Visitor';
 
-            {/* PAGINATION FOOTER */}
-            {filteredVisitors.length > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', padding: '10px 0', fontSize: '13px', color: '#6b7280' }}>
-                    <div>
-                        Showing <strong style={{color: '#111827'}}>{indexOfFirstItem + 1}</strong> to <strong style={{color: '#111827'}}>{Math.min(indexOfLastItem, filteredVisitors.length)}</strong> of <strong style={{color: '#111827'}}>{filteredVisitors.length}</strong> entries
+                                        return (
+                                            <tr
+                                                key={visitor.VisitorID}
+                                                className="vml-row"
+                                                onClick={() => handleRowClick(visitor)}
+                                                title="Click to view full security profile"
+                                                style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: '#fff', transition: 'background 0.1s' }}
+                                            >
+                                                <td style={tdStyle}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                                                        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'linear-gradient(135deg,#e0e7ff,#c7d2fe)', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                                                            {(visitor.FirstName && visitor.FirstName[0])}{(visitor.Surname && visitor.Surname[0])}
+                                                        </div>
+                                                        <div>
+                                                            <div className="vml-row-name" style={{ fontWeight: 600, color: '#0f172a', fontSize: 13.5, transition: 'color 0.15s' }}>{visitor.FullName}</div>
+                                                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1, fontFamily: 'DM Mono, monospace' }}>#{visitor.VisitorID}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    <span style={{ fontSize: 12, fontWeight: 500, color: '#475569' }}>{displayClassification}</span>
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    {getStatusBadge(visitor)}
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    <span style={{ fontSize: 13, color: '#334155' }}>
+                                                        {new Date(visitor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                    </span>
+                                                </td>
+                                                <td style={tdStyle}>
+                                                    {lastLog ? (
+                                                        <div>
+                                                            <div style={{ fontSize: 13, color: '#334155', fontWeight: 500 }}>
+                                                                {new Date(lastLog.EntryTimestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                            </div>
+                                                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, fontFamily: 'DM Mono, monospace' }}>
+                                                                {new Date(lastLog.EntryTimestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ fontSize: 12, color: '#cbd5e1', fontStyle: 'italic' }}>No visits yet</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    }) : (
+                                        <tr>
+                                            <td colSpan="5" style={{ padding: '48px 0', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
+                                                No records match your filters.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                        <select 
-                            value={itemsPerPage} 
-                            onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                            style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #d1d5db', marginRight: '10px', outline: 'none', cursor: 'pointer', backgroundColor: 'white' }}
-                        >
-                            <option value={10}>10 per page</option>
-                            <option value={25}>25 per page</option>
-                            <option value={50}>50 per page</option>
-                        </select>
+                )}
 
-                        <button 
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            disabled={currentPage === 1}
-                            style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: currentPage === 1 ? '#f9fafb' : 'white', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', color: currentPage === 1 ? '#9ca3af' : '#374151', fontWeight: 'bold' }}
-                        >
-                            Previous
-                        </button>
-                        <span style={{ padding: '0 10px', fontWeight: '600', color: '#374151' }}>Page {currentPage} of {totalPages}</span>
-                        <button 
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            disabled={currentPage === totalPages}
-                            style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', background: currentPage === totalPages ? '#f9fafb' : 'white', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', color: currentPage === totalPages ? '#9ca3af' : '#374151', fontWeight: 'bold' }}
-                        >
-                            Next
-                        </button>
+                {/* PAGINATION */}
+                {filteredVisitors.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, fontSize: 12, color: '#64748b' }}>
+                        <span>
+                            Showing <strong style={{ color: '#0f172a' }}>{indexOfFirstItem + 1}</strong> to <strong style={{ color: '#0f172a' }}>{Math.min(indexOfLastItem, filteredVisitors.length)}</strong> of <strong style={{ color: '#0f172a' }}>{filteredVisitors.length}</strong> entries
+                        </span>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                                className="vml-select"
+                                style={{ ...selectStyle, minWidth: 'unset', padding: '6px 10px', fontSize: 12 }}
+                            >
+                                <option value={10}>10 per page</option>
+                                <option value={25}>25 per page</option>
+                                <option value={50}>50 per page</option>
+                            </select>
+                            <button
+                                className="vml-pg-btn"
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                disabled={currentPage === 1}
+                                style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', color: currentPage === 1 ? '#cbd5e1' : '#475569', fontWeight: 500, fontSize: 12, fontFamily: 'inherit', transition: 'background 0.1s' }}
+                            >
+                                Previous
+                            </button>
+                            <span style={{ padding: '0 8px', fontWeight: 600, color: '#334155', fontSize: 12 }}>
+                                {currentPage} / {totalPages}
+                            </span>
+                            <button
+                                className="vml-pg-btn"
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                                style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', color: currentPage === totalPages ? '#cbd5e1' : '#475569', fontWeight: 500, fontSize: 12, fontFamily: 'inherit', transition: 'background 0.1s' }}
+                            >
+                                Next
+                            </button>
+                        </div>
                     </div>
-                </div>
-            )}
-            
-            {/* 4. MODAL */}
+                )}
+            </div>
+
+            {/* MODAL */}
             {showModal && (
-                <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
-                    <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                        <button style={styles.closeBtn} onClick={() => setShowModal(false)}>&times;</button>
-                        
-                        {historyLoading || !selectedVisitor ? <p>Loading details...</p> : (
-                            <div style={{ display: 'flex', gap: '30px' }}>
-                                {/* LEFT: PROFILE & ACTIONS */}
-                                <div style={{ flex: 1, borderRight: '1px solid #e5e7eb', paddingRight: '20px' }}>
-                                    <h2 style={{ marginTop: 0, color: '#111827', marginBottom: '5px' }}>{selectedVisitor.FullName}</h2>
-                                    {/* 👈 Updated Modal Profile Tag to VisitorType */}
-                                    <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>ID: #{selectedVisitor.VisitorID} • {selectedVisitor.VisitorType || selectedVisitor.AffiliationType || 'Visitor'}</p>
-                                    
-                                    <button onClick={downloadVisitorProfilePDF} style={{ marginTop: '15px', width: '100%', padding: '10px', background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', transition: 'all 0.2s', fontSize: '13px' }}>
-                                        Download Full Security Dossier
-                                    </button>
+                <div className="vml-modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="vml-fade" onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: 900, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.16)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
 
-                                    <div style={{background:'#f9fafb', padding:'15px', borderRadius:'8px', marginTop:'20px', marginBottom:'20px', fontSize:'13px'}}>
-                                        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px'}}>
-                                            <div style={{gridColumn: 'span 2', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '4px'}}>
-                                                <strong style={{color: '#4f46e5'}}>Personal Data</strong>
+                        {/* Modal Header */}
+                        <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', borderRadius: '16px 16px 0 0' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                                Visitor Security Profile
+                            </span>
+                            <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#94a3b8', lineHeight: 1, padding: 4 }}>&times;</button>
+                        </div>
+
+                        {historyLoading || !selectedVisitor ? (
+                            <div style={{ padding: '48px 0', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading profile...</div>
+                        ) : (
+                            <div style={{ display: 'flex', gap: 0, flex: 1 }}>
+
+                                {/* LEFT PANEL */}
+                                <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid #f1f5f9', padding: '22px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                                            <div style={{ width: 46, height: 46, borderRadius: 12, background: 'linear-gradient(135deg,#e0e7ff,#c7d2fe)', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                                                {selectedVisitor.FullName?.[0]}
                                             </div>
-                                            <div><strong>Age:</strong> {selectedVisitor.Age || 'N/A'}</div>
-                                            <div><strong>Sex:</strong> {selectedVisitor.Sex || 'N/A'}</div>
-                                            <div><strong>Phone:</strong> {selectedVisitor.ContactNumber || 'N/A'}</div>
-                                            <div><strong>Email:</strong> {selectedVisitor.Email || 'N/A'}</div>
+                                            <div>
+                                                <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{selectedVisitor.FullName}</div>
+                                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, fontFamily: 'DM Mono, monospace' }}>
+                                                    #{selectedVisitor.VisitorID} · {selectedVisitor.VisitorType || selectedVisitor.AffiliationType || 'Visitor'}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
-                                        <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#6b7280', textTransform: 'uppercase' }}>Global Status Control</h4>
+                                    <button onClick={downloadVisitorProfilePDF} style={{ width: '100%', padding: '9px 14px', background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', borderRadius: 9, fontWeight: 600, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                                        Download Security Dossier
+                                    </button>
+
+                                    <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: '14px', fontSize: 12 }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Personal Data</div>
+                                        {[
+                                            ['Age', selectedVisitor.Age],
+                                            ['Sex', selectedVisitor.Sex],
+                                            ['Phone', selectedVisitor.ContactNumber],
+                                            ['Email', selectedVisitor.Email],
+                                        ].map(([label, val]) => (
+                                            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+                                                <span style={{ color: '#94a3b8', fontWeight: 500 }}>{label}</span>
+                                                <span style={{ color: '#334155', fontWeight: 500, textAlign: 'right', maxWidth: 140, wordBreak: 'break-word' }}>{val || 'N/A'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Global Status Control</div>
+
                                         {(inputMode === 'watchlist' || inputMode === 'ban') ? (
-                                            <div className="fade-in">
-                                                <input type="text" autoFocus value={actionReason} onChange={(e) => setActionReason(e.target.value)} placeholder={`Reason for ${inputMode}...`} style={{...styles.inputStyle, border: `1px solid ${inputMode === 'ban' ? '#ef4444' : '#d97706'}`}} />
-                                                <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                                                    <button onClick={() => setInputMode(null)} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer'}}>Cancel</button>
-                                                    <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{flex:1, padding:'8px', borderRadius:'6px', border:'none', cursor:'pointer', background: inputMode === 'ban' ? '#ef4444' : '#d97706', color:'white', fontWeight:'bold'}}>Confirm</button>
+                                            <div className="vml-fade">
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    value={actionReason}
+                                                    onChange={(e) => setActionReason(e.target.value)}
+                                                    placeholder={`Reason for ${inputMode}...`}
+                                                    className="vml-input"
+                                                    style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: `1.5px solid ${inputMode === 'ban' ? '#f87171' : '#fbbf24'}`, fontSize: 12, fontFamily: 'inherit', color: '#0f172a', background: '#fff', outline: 'none' }}
+                                                />
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                                                    <button onClick={() => setInputMode(null)} style={{ ...modalGhostBtn }}>Cancel</button>
+                                                    <button onClick={() => handleGlobalClearance(inputMode === 'ban' ? 'Banned' : 'Watchlisted')} style={{ ...modalSolidBtn, background: inputMode === 'ban' ? '#dc2626' : '#d97706' }}>Confirm</button>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                                 {selectedVisitor.Status === 'Banned' ? (
-                                                    <button onClick={() => handleGlobalClearance('Cleared')} style={{ gridColumn: 'span 2', padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>Unban User (Clear Record)</button>
+                                                    <button onClick={() => handleGlobalClearance('Cleared')} style={{ ...modalSolidBtn, background: '#10b981', gridColumn: '1/-1' }}>
+                                                        Unban User
+                                                    </button>
                                                 ) : selectedVisitor.IsWatchlisted == 1 ? (
                                                     <>
-                                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ padding:'10px', background:'#10b981', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>Remove Flag</button>
-                                                        <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#ef4444', color:'white', border:'none', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>Ban User</button>
+                                                        <button onClick={() => handleGlobalClearance('Cleared')} style={{ ...modalSolidBtn, background: '#10b981' }}>Remove Flag</button>
+                                                        <button onClick={() => setInputMode('ban')} style={{ ...modalSolidBtn, background: '#dc2626' }}>Ban User</button>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <button onClick={() => setInputMode('watchlist')} style={{ padding:'10px', background:'#fefce8', color:'#a16207', border:'1px solid #fef08a', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>Global Flag</button>
-                                                        <button onClick={() => setInputMode('ban')} style={{ padding:'10px', background:'#fef2f2', color:'#b91c1c', border:'1px solid #fecaca', borderRadius:'6px', cursor:'pointer', fontWeight:'bold' }}>Ban User</button>
+                                                        <button onClick={() => setInputMode('watchlist')} style={{ ...modalOutlineBtn, color: '#d97706', borderColor: '#fde68a', background: '#fffbeb' }}>Global Flag</button>
+                                                        <button onClick={() => setInputMode('ban')} style={{ ...modalOutlineBtn, color: '#dc2626', borderColor: '#fecaca', background: '#fff5f5' }}>Ban User</button>
                                                     </>
                                                 )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                                
-                                {/* RIGHT: AUDIT LOG TIMELINE */}
-                                <div style={{ flex: 2 }}>
-                                    <h3 style={{ marginTop: 0, color: '#374151' }}>Security Audit Trail</h3>
-                                    <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb', padding: '15px' }}>
-                                        {secLogs.length > 0 ? (
-                                            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                                {secLogs.map(log => {
-                                                    const isDanger = log.Action.includes('BAN') || log.Action.includes('FLAG') || log.Action.includes('OVERSTAY');
-                                                    return (
-                                                        <li key={log.id} style={{ marginBottom: '15px', borderLeft: '2px solid #d1d5db', paddingLeft: '15px', position: 'relative' }}>
-                                                            <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold' }}>{new Date(log.created_at).toLocaleString()} • {log.Officer}</div>
-                                                            <div style={{ fontWeight: 'bold', color: isDanger ? '#b91c1c' : '#059669' }}>{log.Action.replace(/_/g, ' ')}</div>
-                                                            <div style={{ fontSize: '13px', color: '#374151' }}>Reason: "{log.Reason}"</div>
-                                                        </li>
-                                                    );
-                                                })}
-                                            </ul>
-                                        ) : (<p style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>No security incidents recorded.</p>)}
+
+                                {/* RIGHT PANEL */}
+                                <div style={{ flex: 1, padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+                                    {/* Security Audit Trail */}
+                                    <div>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Security Audit Trail</div>
+                                        <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', padding: '12px 14px' }}>
+                                            {secLogs.length > 0 ? (
+                                                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                                    {secLogs.map(log => {
+                                                        const isDanger = log.Action.includes('BAN') || log.Action.includes('FLAG') || log.Action.includes('OVERSTAY');
+                                                        return (
+                                                            <li key={log.id} style={{ borderLeft: `2px solid ${isDanger ? '#ef4444' : '#10b981'}`, paddingLeft: 12 }}>
+                                                                <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'DM Mono, monospace', marginBottom: 2 }}>
+                                                                    {new Date(log.created_at).toLocaleString()} · {log.Officer}
+                                                                </div>
+                                                                <div style={{ fontSize: 12, fontWeight: 700, color: isDanger ? '#b91c1c' : '#065f46' }}>
+                                                                    {log.Action.replace(/_/g, ' ')}
+                                                                </div>
+                                                                <div style={{ fontSize: 12, color: '#475569' }}>Reason: {log.Reason}</div>
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            ) : (
+                                                <p style={{ color: '#cbd5e1', fontStyle: 'italic', fontSize: 13, margin: 0 }}>No security incidents recorded.</p>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    <h4 style={{ marginTop: '20px', borderTop: '1px solid #e5e7eb', paddingTop: '10px', color: '#374151' }}>Recent Visits</h4>
-                                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                                        <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
-                                            <thead>
-                                                <tr style={{borderBottom: '1px solid #e5e7eb'}}>
-                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Date</th>
-                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>In / Out</th>
-                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Purpose</th>
-                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Dept</th>
-                                                    <th style={{textAlign:'left', padding:'8px', color: '#6b7280'}}>Host/Person</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {selectedVisitor.logs && selectedVisitor.logs.length > 0 ? selectedVisitor.logs.map(log => (
-                                                    <tr key={log.LogID} style={{borderBottom: '1px solid #f3f4f6'}}>
-                                                        <td style={{padding: '8px'}}>{new Date(log.EntryTimestamp).toLocaleDateString()}</td>
-                                                        <td style={{ padding: '8px' }}>
-                                                            <div style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: '5px' }}>⬇ {new Date(log.EntryTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                                                            {log.ExitTimestamp ? 
-                                                                <div style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '5px' }}>⬆ {new Date(log.ExitTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div> : 
-                                                                <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1e40af', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', marginTop: '2px', display: 'inline-block' }}>ACTIVE</span>
-                                                            }
-                                                        </td>
-                                                        <td style={{padding: '8px'}}>
-                                                            {log.PurposeOfVisit}
-                                                            {log.IsFlagged && <div style={{fontSize: '10px', color: '#b91c1c', fontWeight: 'bold'}}>SUSPICIOUS</div>}
-                                                        </td>
-                                                        <td style={{padding: '8px'}}>{log.DepartmentToVisit || '-'}</td>
-                                                        <td style={{padding: '8px'}}>{log.PersonToVisit || '-'}</td>
+                                    {/* Visit History */}
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>Visit History</div>
+                                        <div style={{ overflowY: 'auto', maxHeight: 280 }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                                <thead>
+                                                    <tr style={{ background: '#f8fafc' }}>
+                                                        {['Date', 'Entry / Exit', 'Purpose', 'Department', 'Host'].map(h => (
+                                                            <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.07em', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9' }}>{h}</th>
+                                                        ))}
                                                     </tr>
-                                                )) : (
-                                                    <tr><td colSpan="5" style={{padding: '15px', color: '#9ca3af', textAlign: 'center'}}>No visit history found.</td></tr>
-                                                )}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                    {selectedVisitor.logs && selectedVisitor.logs.length > 0 ? selectedVisitor.logs.map(log => (
+                                                        <tr key={log.LogID} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                            <td style={{ padding: '9px 10px', color: '#334155' }}>{new Date(log.EntryTimestamp).toLocaleDateString()}</td>
+                                                            <td style={{ padding: '9px 10px' }}>
+                                                                <div style={{ color: '#059669', fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
+                                                                    In {new Date(log.EntryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </div>
+                                                                {log.ExitTimestamp ? (
+                                                                    <div style={{ color: '#dc2626', fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
+                                                                        Out {new Date(log.ExitTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span style={{ fontSize: 10, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700, display: 'inline-block', marginTop: 2 }}>ACTIVE</span>
+                                                                )}
+                                                            </td>
+                                                            <td style={{ padding: '9px 10px', color: '#475569' }}>
+                                                                {log.PurposeOfVisit}
+                                                                {/* BUG FIXED HERE */}
+                                                                {log.IsFlagged == 1 ? <div style={{ fontSize: 10, color: '#b91c1c', fontWeight: 700, marginTop: 2 }}>SUSPICIOUS</div> : null}
+                                                            </td>
+                                                            <td style={{ padding: '9px 10px', color: '#475569' }}>{log.DepartmentToVisit || '-'}</td>
+                                                            <td style={{ padding: '9px 10px', color: '#475569' }}>{log.PersonToVisit || '-'}</td>
+                                                        </tr>
+                                                    )) : (
+                                                        <tr>
+                                                            <td colSpan="5" style={{ padding: '24px 0', textAlign: 'center', color: '#cbd5e1', fontSize: 13 }}>No visit history found.</td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -556,6 +786,95 @@ export default function VisitorMasterList() {
                     </div>
                 </div>
             )}
+        </>
+    );
+}
+
+// Sub-components
+
+function StatusPill({ variant, children }) {
+    const map = {
+        banned:  { bg: '#fff5f5', color: '#b91c1c', ring: '#fecaca' },
+        flagged: { bg: '#fffbeb', color: '#92400e', ring: '#fde68a' },
+        cleared: { bg: '#f0fdf4', color: '#166534', ring: '#bbf7d0' },
+    };
+    const s = map[variant] || map.cleared;
+    return (
+        <span style={{ display: 'inline-block', padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.ring}` }}>
+            {children}
+        </span>
+    );
+}
+
+function FilterChip({ label, count, active, variant, onClick }) {
+    const map = {
+        cleared: { idle: { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' }, active: { bg: '#16a34a', color: '#fff', border: '#16a34a' } },
+        flagged: { idle: { bg: '#fffbeb', color: '#92400e', border: '#fde68a' }, active: { bg: '#d97706', color: '#fff', border: '#d97706' } },
+        banned:  { idle: { bg: '#fff5f5', color: '#b91c1c', border: '#fecaca' }, active: { bg: '#dc2626', color: '#fff', border: '#dc2626' } },
+        default: { idle: { bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' }, active: { bg: '#0f172a', color: '#fff', border: '#0f172a' } },
+    };
+    const s = (map[variant] || map.default)[active ? 'active' : 'idle'];
+    return (
+        <button onClick={onClick} style={{ padding: '6px 13px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: s.bg, color: s.color, border: `1px solid ${s.border}`, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}>
+            {label} <span style={{ opacity: 0.75, fontSize: 11, marginLeft: 2 }}>({count})</span>
+        </button>
+    );
+}
+
+function FilterGroup({ label, children }) {
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</span>
+            {children}
         </div>
     );
 }
+
+function SortableHeader({ label, sortKey, sortConfig, onSort }) {
+    const isActive = sortConfig.key === sortKey;
+    return (
+        <th onClick={() => onSort(sortKey)} style={{ ...thStyle, cursor: 'pointer', background: isActive ? '#f1f5f9' : '#f8fafc', color: isActive ? '#334155' : '#94a3b8', userSelect: 'none' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {label}
+                <span style={{ fontSize: 10, fontWeight: 700, opacity: isActive ? 1 : 0.4 }}>
+                    {isActive ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+            </span>
+        </th>
+    );
+}
+
+// Shared styles
+const thStyle = {
+    textAlign: 'left', padding: '10px 16px',
+    fontSize: 11, fontWeight: 600, color: '#94a3b8',
+    letterSpacing: '0.07em', textTransform: 'uppercase',
+    borderBottom: '1px solid #f1f5f9', background: '#f8fafc',
+};
+
+const tdStyle = {
+    padding: '13px 16px', verticalAlign: 'middle',
+};
+
+const selectStyle = {
+    padding: '8px 11px', borderRadius: 8, border: '1px solid #e2e8f0',
+    background: '#fff', fontSize: 13, color: '#334155',
+    fontFamily: 'inherit', cursor: 'pointer', minWidth: 160,
+    outline: 'none', transition: 'border-color 0.15s',
+};
+
+const dateInputStyle = {
+    padding: '8px 11px', borderRadius: 8, border: '1px solid #e2e8f0',
+    background: '#fff', fontSize: 13, color: '#334155',
+    fontFamily: 'inherit', outline: 'none',
+};
+
+const baseModalBtn = {
+    padding: '8px 12px', borderRadius: 8, fontSize: 12,
+    fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+    border: 'none', transition: 'opacity 0.15s',
+};
+
+const modalSolidBtn   = { ...baseModalBtn, color: '#fff' };
+const modalGhostBtn   = { ...baseModalBtn, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' };
+const modalOutlineBtn = { ...baseModalBtn, border: '1px solid' };

@@ -43,12 +43,15 @@ class MonitorController extends Controller
                     $isOverstayFlag = $log->FlagReason && str_contains($log->FlagReason, 'Overstay');
                     $isAIFlag = $log->IsFlagged == 1 && !$isOverstayFlag;
 
+                    // Extract the specific reason from the database models
+                    $reason = $log->visitor?->WatchlistReason ?: ($log->FlagReason ?: 'Security risk detected');
+
                     // 1. ALWAYS log the physical entry for EVERYONE
                     $feed[] = [
                         'id' => $log->LogID . '_entry', 
                         'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 
                         'timestamp' => Carbon::parse($log->EntryTimestamp)->timestamp, 
-                        'msg' => "🟢 Entry: {$visitorName}", 
+                        'msg' => "ENTRY: {$visitorName}", 
                         'type' => 'success'
                     ];
 
@@ -56,59 +59,91 @@ class MonitorController extends Controller
                     $alertTime = Carbon::parse($log->EntryTimestamp)->timestamp + 1;
                     
                     if ($isBanned) {
-                        $feed[] = ['id' => $log->LogID . '_alert_ban', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "🚫 BANNED: {$visitorName} detected!", 'type' => 'danger'];
+                        $feed[] = ['id' => $log->LogID . '_alert_ban', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "BANNED: {$visitorName} - Reason: {$reason}", 'type' => 'danger'];
                     } elseif ($isWatchlisted) {
-                        $feed[] = ['id' => $log->LogID . '_alert_watch', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "⚠️ WATCHLIST: {$visitorName} is on premises.", 'type' => 'warning'];
+                        $feed[] = ['id' => $log->LogID . '_alert_watch', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "WATCHLIST: {$visitorName} - Reason: {$reason}", 'type' => 'warning'];
                     } elseif ($isAIFlag) {
-                        $feed[] = ['id' => $log->LogID . '_alert_ai', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "🤖 AI ALERT: {$visitorName} - Suspicion", 'type' => 'danger'];
+                        $aiReason = $log->FlagReason ?: 'Suspicious Behavior';
+                        $feed[] = ['id' => $log->LogID . '_alert_ai', 'time' => Carbon::parse($log->EntryTimestamp)->format('h:i A'), 'timestamp' => $alertTime, 'msg' => "AI ALERT: {$visitorName} - {$aiReason}", 'type' => 'danger'];
                     }
 
                     // Process Overstay Flag
                     if ($isOverstayFlag) {
-                        $feed[] = ['id' => $log->LogID . '_overstay', 'time' => Carbon::parse($log->updated_at)->format('h:i A'), 'timestamp' => Carbon::parse($log->updated_at)->timestamp, 'msg' => "🕒 OVERSTAY ALERT: {$visitorName} (> 4hrs)", 'type' => 'danger'];
+                        $feed[] = ['id' => $log->LogID . '_overstay', 'time' => Carbon::parse($log->updated_at)->format('h:i A'), 'timestamp' => Carbon::parse($log->updated_at)->timestamp, 'msg' => "OVERSTAY ALERT: {$visitorName} (> 4hrs)", 'type' => 'danger'];
                     }
                 }
 
                 // Process Exit
                 if ($log->ExitTimestamp && Carbon::parse($log->ExitTimestamp)->isSameDay($today)) {
-                    $feed[] = ['id' => $log->LogID . '_exit', 'time' => Carbon::parse($log->ExitTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->ExitTimestamp)->timestamp, 'msg' => "🚪 EXIT: {$visitorName}", 'type' => 'neutral'];
+                    $feed[] = ['id' => $log->LogID . '_exit', 'time' => Carbon::parse($log->ExitTimestamp)->format('h:i A'), 'timestamp' => Carbon::parse($log->ExitTimestamp)->timestamp, 'msg' => "EXIT: {$visitorName}", 'type' => 'default'];
                 }
             }
 
             // B. Security Log Events (Global Bans, Clearances, Manual Flags today)
             $securityLogs = \App\Models\SecurityLog::with('visitor')
                 ->whereDate('created_at', $today)
-                // 🛑 IGNORE BACKGROUND LOGS: Don't show system entries/exits in the Security Feed
+                // 🛑 IGNORE BACKGROUND LOGS
                 ->whereNotIn('Action', ['SYSTEM_ENTRY', 'AI_SUSPICION_FLAG', 'VISITOR_EXIT']) 
                 ->get();
 
             foreach ($securityLogs as $sec) {
                 $visitorName = $sec->visitor ? $sec->visitor->FullName : 'Unknown Visitor';
-                $action = strtoupper(str_replace('_', ' ', $sec->Action));
+                $rawAction = strtoupper($sec->Action);
                 
                 $type = 'warning';
-                if (str_contains($action, 'BAN') || str_contains($action, 'OVERSTAY')) $type = 'danger';
-                if (str_contains($action, 'CLEAR') || str_contains($action, 'UNBAN') || str_contains($action, 'UNFLAG')) $type = 'success';
+                $actionDisplay = str_replace('_', ' ', $rawAction);
+
+                // Determine display type and styling
+                if (str_contains($rawAction, 'BAN')) {
+                    $type = 'danger';
+                    $actionDisplay = 'BANNED';
+                } elseif (str_contains($rawAction, 'OVERSTAY')) {
+                    $type = 'danger';
+                    $actionDisplay = 'OVERSTAY ALERT';
+                } elseif (str_contains($rawAction, 'CLEAR') || str_contains($rawAction, 'UNBAN') || str_contains($rawAction, 'UNFLAG')) {
+                    $type = 'success';
+                    $actionDisplay = 'CLEARED';
+                } elseif (str_contains($rawAction, 'FLAG')) {
+                    $type = 'warning';
+                    $actionDisplay = 'FLAGGED';
+                } elseif (str_contains($rawAction, 'FORCE') || str_contains($rawAction, 'CHECKOUT')) {
+                    $type = 'admin'; // Assign the new neutral type
+                    $actionDisplay = 'ADMIN FORCE EXIT';
+                }
+
+                // Smart formatting for the reason
+                $reasonText = "";
+                if (!empty($sec->Reason)) {
+                    $upperReason = strtoupper($sec->Reason);
+                    
+                    // Hide redundant words
+                    $isRedundantClear = str_contains($actionDisplay, 'CLEARED') && str_contains($upperReason, 'RECORD CLEARED');
+                    $isRedundantForce = str_contains($actionDisplay, 'FORCE') && str_contains($upperReason, 'FORCE');
+                    
+                    if (!($isRedundantClear || $isRedundantForce)) {
+                        $reasonText = " - Reason: " . $sec->Reason;
+                    }
+                }
 
                 $feed[] = [
                     'id' => 'sec_' . $sec->id,
                     'time' => Carbon::parse($sec->created_at)->format('h:i A'),
                     'timestamp' => Carbon::parse($sec->created_at)->timestamp,
-                    'msg' => "👮 SECURITY ACTION: {$visitorName} - {$action}",
+                    'msg' => "{$actionDisplay}: {$visitorName}{$reasonText}",
                     'type' => $type
                 ];
             }
 
-            // Add the permanent System Start Log for Today at 12:00 AM
+            // Add the permanent System Start Log
             $feed[] = [
                 'id' => 'sys_start_' . $today->format('Ymd'),
                 'time' => '12:00 AM',
                 'timestamp' => $today->timestamp,
-                'msg' => "🚀 SYSTEM CYCLE: New day started",
+                'msg' => "SYSTEM CYCLE: New day started",
                 'type' => 'system'
             ];
 
-            // Sort the feed by timestamp descending (newest at the top)
+            // Sort the feed by timestamp descending
             usort($feed, function($a, $b) {
                 return $b['timestamp'] <=> $a['timestamp'];
             });
@@ -142,7 +177,14 @@ class MonitorController extends Controller
 
         $totalVisits = \App\Models\VisitLog::whereDate('EntryTimestamp', $today)->count();
         $activeVisits = \App\Models\VisitLog::whereNull('ExitTimestamp')->count();
-        $flaggedCount = \App\Models\VisitLog::where('IsFlagged', 1)->whereDate('EntryTimestamp', $today)->count();
+        
+        $flaggedCount = \App\Models\SecurityLog::whereDate('created_at', $today)
+            ->where(function ($query) {
+                $query->where('Action', 'LIKE', '%BAN%')
+                      ->orWhere('Action', 'LIKE', '%FLAG%')
+                      ->orWhere('Action', 'LIKE', '%OVERSTAY%');
+            })
+            ->count();
         
         $busiestDept = \App\Models\VisitLog::whereDate('EntryTimestamp', $today)
             ->select('DepartmentToVisit', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
