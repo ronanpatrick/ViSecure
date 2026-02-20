@@ -9,6 +9,7 @@ use App\Models\SecurityLog; // ✅ Imported
 use App\Services\AIService;
 use Carbon\Carbon;             
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http; // 👈 ADD THIS LINE
 
 class VisitorController extends Controller
 {
@@ -85,12 +86,26 @@ class VisitorController extends Controller
             $peakHours[] = ['hour' => $hour, 'count' => $count];
         }
 
-        // 4. AI Predicted Traffic (Simple projection for 'today')
+        // ------------------------------------------------------------------
+        // 4. 🧠 AI PREDICTED TRAFFIC (Powered by Python ML)
+        // ------------------------------------------------------------------
         $predictedHours = null;
         if ($period === 'today') {
-            $predictedHours = [];
-            for ($i=0; $i<24; $i++) {
-                $predictedHours[$i] = rand(0, max(5, $hourlyCounts[$i] + rand(1, 5)));
+            try {
+                // ✅ Send ALL history so the Random Forest learns the "Average" pattern
+                $history = \App\Models\VisitLog::select('EntryTimestamp as timestamp')->get();  
+                \Illuminate\Support\Facades\Log::info("AI DATA COUNT: " . $history->count());
+                // Call your Python Flask Server
+                $response = Http::post('http://127.0.0.1:5000/predict-traffic', [
+                    'history' => $history->toArray() // Ensure it's an array
+                ]);
+
+                if ($response->successful()) {
+                    $predictedHours = $response->json()['prediction'];
+                }
+            } catch (\Exception $e) {
+                // If Python server is offline, don't crash the dashboard
+                $predictedHours = null; 
             }
         }
 

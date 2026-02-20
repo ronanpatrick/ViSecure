@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, NavLink, Outlet } from 'react-router-dom';
 
 // ✅ IMPORT YOUR NEW COMPONENTS
 import LiveDashboard from './LiveDashboard';  // The new Command Center
@@ -7,8 +7,6 @@ import VisitorMasterList from './VisitorMasterList';
 import AnalyticsDashboard from './AnalyticsDashboard'; // 👈 This is imported, now let's use it!
 
 export default function AdminDashboard() {
-    // Default to 'MONITORING' so you see the cool dashboard first
-    const [currentView, setCurrentView] = useState('MONITORING'); 
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -16,7 +14,6 @@ export default function AdminDashboard() {
         navigate('/login');
     };
 
-    // --- MAIN RENDER ---
     return (
         <div style={dashboardWrapperStyle}>
             
@@ -28,15 +25,16 @@ export default function AdminDashboard() {
                 </div>
 
                 <nav style={navStyle}>
-                    <button onClick={() => setCurrentView('MONITORING')} style={currentView === 'MONITORING' ? activeTabStyle : tabStyle}>
+                    {/* 🆕 Using NavLink instead of buttons */}
+                    <NavLink to="/admin/monitoring" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
                         Live Dashboard
-                    </button>
-                    <button onClick={() => setCurrentView('RECORDS')} style={currentView === 'RECORDS' ? activeTabStyle : tabStyle}>
+                    </NavLink>
+                    <NavLink to="/admin/records" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
                         Visitor Records
-                    </button>
-                    <button onClick={() => setCurrentView('ANALYTICS')} style={currentView === 'ANALYTICS' ? activeTabStyle : tabStyle}>
+                    </NavLink>
+                    <NavLink to="/admin/analytics" style={({ isActive }) => isActive ? activeTabStyle : tabStyle}>
                         Analytics & Reports
-                    </button>
+                    </NavLink>
                 </nav>
 
                 <button onClick={handleLogout} style={logoutBtnStyle}>Sign Out</button>
@@ -44,15 +42,8 @@ export default function AdminDashboard() {
 
             {/* MAIN CONTENT AREA */}
             <div style={mainContentStyle}>
-                
-                {/* VIEW 1: LIVE DASHBOARD (Command Center) */}
-                {currentView === 'MONITORING' && <LiveDashboard />}
-
-                {/* VIEW 2: RECORDS (Masterlist) */}
-                {currentView === 'RECORDS' && <VisitorMasterList />}
-
-                {/* VIEW 3: ANALYTICS (The Fix!) */}
-                {currentView === 'ANALYTICS' && <AnalyticsDashboard />} 
+                {/* 🛡️ THE OUTLET: This is where Monitoring/Records/Analytics will appear! */}
+                <Outlet />
             </div>
 
         </div>

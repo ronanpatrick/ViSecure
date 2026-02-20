@@ -130,47 +130,68 @@ class MonitorController extends Controller
     }
 
     public function generateAISummary() {
-        // We use Cache::forget to make sure you see the new version immediately
-        Cache::forget('visecure_ai_summary'); 
+        if (\Illuminate\Support\Facades\Cache::has('visecure_ai_summary')) {
+            return ['summary' => \Illuminate\Support\Facades\Cache::get('visecure_ai_summary')];
+        }
 
-        return Cache::remember('visecure_ai_summary', 1800, function () {
-            $today = Carbon::today();
+        if (\Illuminate\Support\Facades\Cache::has('visecure_ai_cooldown')) {
+            return ['summary' => \Illuminate\Support\Facades\Cache::get('visecure_ai_cooldown')];
+        }
 
-            $totalVisits = VisitLog::whereDate('EntryTimestamp', $today)->count();
-            $activeVisits = VisitLog::whereNull('ExitTimestamp')->whereDate('EntryTimestamp', $today)->count();
-            $flaggedCount = VisitLog::where('IsFlagged', 1)->whereDate('EntryTimestamp', $today)->count();
+        $today = \Carbon\Carbon::today();
+
+        $totalVisits = \App\Models\VisitLog::whereDate('EntryTimestamp', $today)->count();
+        $activeVisits = \App\Models\VisitLog::whereNull('ExitTimestamp')->count();
+        $flaggedCount = \App\Models\VisitLog::where('IsFlagged', 1)->whereDate('EntryTimestamp', $today)->count();
+        
+        $busiestDept = \App\Models\VisitLog::whereDate('EntryTimestamp', $today)
+            ->select('DepartmentToVisit', \Illuminate\Support\Facades\DB::raw('count(*) as total'))
+            ->groupBy('DepartmentToVisit')
+            ->orderByDesc('total')
+            ->first();
+        $deptName = $busiestDept ? $busiestDept->DepartmentToVisit : 'None';
+
+        $prompt = "You are a helpful and clear security assistant for the ViSecure dashboard. Write a brief, easy-to-understand summary (3-4 sentences) of today's visitor data. 
+        Data: $totalVisits visitors entered today, $activeVisits total people are currently inside the building, and there are $flaggedCount security flags. The busiest department is $deptName.
+        Instructions: 
+        1. Clearly explain the current visitor traffic in plain English.
+        2. Mention the busiest department and what that means for the staff there.
+        3. Give a simple, practical security recommendation based on the number of flags.
+        CRITICAL: Use simple, everyday vocabulary. Do not use complex jargon or overly formal corporate speak. Do not use any markdown formatting, asterisks, bold text, or headers. Output only plain text.";
+
+        $apiKey = env('GEMINI_API_KEY');
+        
+        try {
+            $response = \Illuminate\Support\Facades\Http::withoutVerifying()
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$apiKey}", [
+                'contents' => [['parts' => [['text' => $prompt]]]]
+            ]);
+
+            $result = $response->json();
             
-            $busiestDept = VisitLog::whereDate('EntryTimestamp', $today)
-                ->select('DepartmentToVisit', DB::raw('count(*) as total'))
-                ->groupBy('DepartmentToVisit')
-                ->orderByDesc('total')
-                ->first();
-            $deptName = $busiestDept ? $busiestDept->DepartmentToVisit : 'None';
-
-            // THE ULTIMATE CONCISE PROMPT
-            $prompt = "Write a 2-sentence summary of today's security data. 
-            DO NOT include titles, headers, bullet points, or dates. 
-            Data: $totalVisits total visitors, $activeVisits on-site, $flaggedCount flags, $deptName is busiest. 
-            Start immediately with the analysis.";
-
-            $apiKey = env('GEMINI_API_KEY');
-            
-            try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders(['Content-Type' => 'application/json'])
-                    ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={$apiKey}", [
-                    'contents' => [['parts' => [['text' => $prompt]]]]
-                ]);
-
-                $result = $response->json();
-                $summary = $result['candidates'][0]['content']['parts'][0]['text'] ?? "No data available.";
-                
-                // Remove any potential markdown bolding or headers the AI might try to sneak in
-                return ['summary' => trim(strip_tags($summary))];
-
-            } catch (\Exception $e) {
-                return ['summary' => "Security overview is stable. Monitor active."];
+            if (isset($result['error'])) {
+                $errorMsg = $result['error']['message'];
+                $cooldownMessage = "AI Cooldown: " . $errorMsg;
+                \Illuminate\Support\Facades\Cache::put('visecure_ai_cooldown', $cooldownMessage, 60);
+                return ['summary' => $cooldownMessage];
             }
-        });
+
+            $summary = $result['candidates'][0]['content']['parts'][0]['text'] ?? null;
+            
+            if (!$summary) {
+                return ['summary' => "System operating normally. Waiting on AI data..."];
+            }
+            
+            $cleanSummary = preg_replace('/[\*#_]/', '', $summary); 
+            $cleanSummary = trim(preg_replace('/\s+/', ' ', $cleanSummary)); 
+            
+            \Illuminate\Support\Facades\Cache::put('visecure_ai_summary', $cleanSummary, 1800);
+
+            return ['summary' => $cleanSummary];
+
+        } catch (\Exception $e) {
+            return ['summary' => "Security overview is stable. AI offline."];
+        }
     }
 }

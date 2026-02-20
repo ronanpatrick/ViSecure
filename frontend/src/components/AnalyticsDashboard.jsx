@@ -30,7 +30,13 @@ export default function AnalyticsDashboard() {
             setIsThinking(true);
             try {
                 const res = await axios.get(`${API_URL}/api/admin/ai-summary`);
-                setAiSummary(res.data.summary);
+                
+                // DEFENSIVE FIX: Check if the backend accidentally sent a nested object
+                const summaryText = typeof res.data.summary === 'object' 
+                    ? res.data.summary.summary 
+                    : res.data.summary;
+                    
+                setAiSummary(summaryText || "Analysis complete.");
             } catch (err) {
                 setAiSummary("System operating normally. Traffic is within expected parameters.");
             } finally {
