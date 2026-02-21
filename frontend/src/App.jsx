@@ -7,8 +7,9 @@ import SelfCheckout from './components/SelfCheckout';
 import VerifyPass from './components/VerifyPass'; // 👈 Import it here
 
 import LiveDashboard from './components/LiveDashboard';
-import VisitorMasterList from './components/VisitorMasterList';
+import VisitorMasterList from './components/VisitorMasterlist';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import axios from 'axios';
 
 function App() {
   return (
