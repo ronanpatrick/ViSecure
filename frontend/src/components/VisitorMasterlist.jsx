@@ -110,9 +110,11 @@ export default function VisitorMasterList() {
     const fetchVisitors = async () => {
         try {
             const response = await axios.get(`${API_BASE}/api/admin/all-visitors`);
+            console.log("WHAT IS MY DATA?", response.data);
             setVisitors(response.data);
             setLoading(false);
         } catch (error) { console.error(error); setLoading(false); }
+        
     };
 
     const handleGlobalClearance = async (targetLevel) => {
