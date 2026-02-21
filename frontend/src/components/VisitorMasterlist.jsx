@@ -109,12 +109,29 @@ export default function VisitorMasterList() {
 
     const fetchVisitors = async () => {
         try {
-            const response = await axios.get(`${API_BASE}/api/admin/all-visitors`);
+            const response = await axios.get(`${API_BASE}/api/admin/all-visitors`, {
+                headers: {
+                    'ngrok-skip-browser-warning': '69420' // This tells Ngrok to skip the HTML warning!
+                }
+            });
+            
             console.log("WHAT IS MY DATA?", response.data);
-            setVisitors(response.data);
+            
+            // Add a safety check just in case!
+            if (Array.isArray(response.data)) {
+                setVisitors(response.data);
+            } else if (response.data && Array.isArray(response.data.data)) {
+                // In case Laravel wraps it in a 'data' object
+                setVisitors(response.data.data);
+            } else {
+                setVisitors([]);
+            }
+            
             setLoading(false);
-        } catch (error) { console.error(error); setLoading(false); }
-        
+        } catch (error) { 
+            console.error("Fetch error:", error); 
+            setLoading(false); 
+        }
     };
 
     const handleGlobalClearance = async (targetLevel) => {

@@ -5,6 +5,8 @@ import App from './App.jsx';
 import './index.css';
 import axios from 'axios';
 
+axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
+
 // 🛡️ GLOBAL AXIOS SECURITY INTERCEPTOR
 // This automatically attaches the Admin Token to every request sent to Laravel
 axios.interceptors.request.use((config) => {
